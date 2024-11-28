@@ -1,0 +1,305 @@
+{
+  "successData": [],
+  "failureData": [
+    {
+      "No.": 1,
+      "Student ID": "ITITIU12014",
+      "Name": "Cao Trọng Xưa",
+      "Class": "ITIT12IU41"
+    },
+    {
+      "No.": 2,
+      "Student ID": "ITITIU12035",
+      "Name": "Đặng Thái Sơn",
+      "Class": "ITIT12IU41"
+    },
+    {
+      "No.": 3,
+      "Student ID": "ITITIU10021",
+      "Name": "Đào Minh Nhựt",
+      "Class": "ITIT10NE1"
+    },
+    {
+      "No.": 4,
+      "Student ID": "ITITIU12027",
+      "Name": "Đinh Xuân Thanh",
+      "Class": "ITIT12IU51"
+    },
+    {
+      "No.": 5,
+      "Student ID": "ITCSIU11001",
+      "Name": "Dương Tuấn Nam",
+      "Class": "ITCS11IU11"
+    },
+    {
+      "No.": 6,
+      "Student ID": "ITITIU12056",
+      "Name": "Hoàng Ngọc Bảo Huy",
+      "Class": "ITIT12IU31"
+    },
+    {
+      "No.": 7,
+      "Student ID": "ITITIU11023",
+      "Name": "Huỳnh Thúc Nhật Trường",
+      "Class": "ITIT11IU11"
+    },
+    {
+      "No.": 8,
+      "Student ID": "ITITIU12006",
+      "Name": "Lê Duy Luân",
+      "Class": "ITIT12IU31"
+    },
+    {
+      "No.": 9,
+      "Student ID": "ITITIU11028",
+      "Name": "Lê Tấn Khoa",
+      "Class": "ITIT11IU11"
+    },
+    {
+      "No.": 10,
+      "Student ID": "ITITIU12012",
+      "Name": "Lương Ngọc Trân",
+      "Class": "ITIT12IU51"
+    },
+    {
+      "No.": 11,
+      "Student ID": "ITITIU12017",
+      "Name": "Lý Thanh Hoàng",
+      "Class": "ITIT12IU31"
+    },
+    {
+      "No.": 12,
+      "Student ID": "ITITIU12025",
+      "Name": "Mạch Chí Tài",
+      "Class": "ITIT12IU41"
+    },
+    {
+      "No.": 13,
+      "Student ID": "ITCERG12001",
+      "Name": "Mai Thái Dương",
+      "Class": "ITCE12RG51"
+    },
+    {
+      "No.": 14,
+      "Student ID": "ITITIU12004",
+      "Name": "Nguyễn Đình Việt Anh",
+      "Class": "ITIT12IU51"
+    },
+    {
+      "No.": 15,
+      "Student ID": "ITSB09212",
+      "Name": "Nguyễn Đỗ Thiên Tú",
+      "Class": "IT09SB11"
+    },
+    {
+      "No.": 16,
+      "Student ID": "ITITIU12046",
+      "Name": "Nguyễn Đức Hoàng Dũng",
+      "Class": "ITIT12IU31"
+    },
+    {
+      "No.": 17,
+      "Student ID": "ITITIU12039",
+      "Name": "Nguyễn Hải Đăng",
+      "Class": "ITIT12IU31"
+    },
+    {
+      "No.": 18,
+      "Student ID": "ITITIU12001",
+      "Name": "Nguyễn Hoàng Giang",
+      "Class": "ITIT12IU51"
+    },
+    {
+      "No.": 19,
+      "Student ID": "ITITIU11008",
+      "Name": "Nguyễn Hoàng Phúc",
+      "Class": "ITIT11IU21"
+    },
+    {
+      "No.": 20,
+      "Student ID": "ITITIU12007",
+      "Name": "Nguyễn Hoàng Việt",
+      "Class": "ITIT12IU41"
+    },
+    {
+      "No.": 21,
+      "Student ID": "ITITUN10193",
+      "Name": "Nguyễn Hữu Bảo",
+      "Class": "ITIT10UN11"
+    },
+    {
+      "No.": 22,
+      "Student ID": "ITCSIU11004",
+      "Name": "Nguyễn Hữu Chí",
+      "Class": "ITCS11IU11"
+    },
+    {
+      "No.": 23,
+      "Student ID": "ITITIU12038",
+      "Name": "Nguyễn Hữu Phúc",
+      "Class": "ITIT12IU31"
+    },
+    {
+      "No.": 24,
+      "Student ID": "ITITIU12041",
+      "Name": "Nguyễn Minh Hoàng",
+      "Class": "ITIT12IU51"
+    },
+    {
+      "No.": 25,
+      "Student ID": "ITITIU12013",
+      "Name": "Nguyễn Minh Trí",
+      "Class": "ITIT12IU31"
+    },
+    {
+      "No.": 26,
+      "Student ID": "IT070144",
+      "Name": "Nguyễn Quan Vương",
+      "Class": "IT07UN3"
+    },
+    {
+      "No.": 27,
+      "Student ID": "ITIU09057",
+      "Name": "Nguyễn Quang Quyền",
+      "Class": "IT09NE11"
+    },
+    {
+      "No.": 28,
+      "Student ID": "ITITIU11001",
+      "Name": "Nguyễn Quốc Tuấn",
+      "Class": "ITIT11IU11"
+    },
+    {
+      "No.": 29,
+      "Student ID": "ITIU09090",
+      "Name": "Nguyễn Thanh Hải",
+      "Class": "IT09NE11"
+    },
+    {
+      "No.": 30,
+      "Student ID": "ITITIU11013",
+      "Name": "Nguyễn Thị Hoàng Oanh",
+      "Class": "ITIT11IU11"
+    },
+    {
+      "No.": 31,
+      "Student ID": "ITITIU12016",
+      "Name": "Nguyễn Thị Thủy Tiên",
+      "Class": "ITIT12IU31"
+    },
+    {
+      "No.": 32,
+      "Student ID": "ITITIU11022",
+      "Name": "Nguyễn Thị Thúy Vy",
+      "Class": "ITIT11IU11"
+    },
+    {
+      "No.": 33,
+      "Student ID": "ITITIU12018",
+      "Name": "Nguyễn Thiện Dũng",
+      "Class": "ITIT12IU41"
+    },
+    {
+      "No.": 34,
+      "Student ID": "IT070192",
+      "Name": "Nguyễn Trường Duy Linh",
+      "Class": "IT07CS2"
+    },
+    {
+      "No.": 35,
+      "Student ID": "ITIU09093",
+      "Name": "Nguyễn Tuấn Anh",
+      "Class": "IT09CS11"
+    },
+    {
+      "No.": 36,
+      "Student ID": "ITITIU12051",
+      "Name": "Nguyễn Xuân Gia Khánh",
+      "Class": "ITIT12IU41"
+    },
+    {
+      "No.": 37,
+      "Student ID": "ITITIU11039",
+      "Name": "Ôn Triệu Luân",
+      "Class": "ITIT11IU21"
+    },
+    {
+      "No.": 38,
+      "Student ID": "IT070064",
+      "Name": "Phạm Đặng Anh Khoa",
+      "Class": "IT07IT1"
+    },
+    {
+      "No.": 39,
+      "Student ID": "ITITIU11037",
+      "Name": "Phạm Hữu Lâm",
+      "Class": "ITIT11IU11"
+    },
+    {
+      "No.": 40,
+      "Student ID": "ITITIU12034",
+      "Name": "Phạm Ngọc Xuân Lĩnh",
+      "Class": "ITIT12IU31"
+    },
+    {
+      "No.": 41,
+      "Student ID": "ITITUN12001",
+      "Name": "Phan Minh Triết",
+      "Class": "ITIT12UN31"
+    },
+    {
+      "No.": 42,
+      "Student ID": "ITITIU12058",
+      "Name": "Phan Thị Hồng Loan",
+      "Class": "ITIT12IU31"
+    },
+    {
+      "No.": 43,
+      "Student ID": "ITITIU12009",
+      "Name": "Phan Tử Gia Linh",
+      "Class": "ITIT12IU31"
+    },
+    {
+      "No.": 44,
+      "Student ID": "ITITIU11019",
+      "Name": "Tạ Trấn",
+      "Class": "ITIT11IU11"
+    },
+    {
+      "No.": 45,
+      "Student ID": "ITITIU11017",
+      "Name": "Thái Nguyên Huy",
+      "Class": "ITIT11IU21"
+    },
+    {
+      "No.": 46,
+      "Student ID": "ITITIU11045",
+      "Name": "Thái Thị Hồng Hà",
+      "Class": "ITIT11IU21"
+    },
+    {
+      "No.": 47,
+      "Student ID": "ITITIU12060",
+      "Name": "Trần Diệu Vi",
+      "Class": "ITIT12IU31"
+    },
+    {
+      "No.": 48,
+      "Student ID": "ITIU08023",
+      "Name": "Trần Đức Minh",
+      "Class": "IT08CS1"
+    },
+    {
+      "No.": 49,
+      "Student ID": "ITITIU12020",
+      "Name": "Trần Lữ Quốc Việt",
+      "Class": "ITIT12IU41"
+    },
+    {
+      "No.": 50,
+      "Student ID": "ITITIU12023",
+      "Name": "Trần Nam Việt",
+      "Class": "ITIT12IU41"
+    }
+  ]
+}
