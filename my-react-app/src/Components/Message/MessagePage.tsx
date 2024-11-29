@@ -18,39 +18,39 @@ function MessagePage() {
   
   console.log("user", user);
 
-  const fetchUserDetails = async () => {
-    try {
-      const response = await axios({
-        url: 'http://localhost:3300/user-details', // Sửa lại đúng endpoint
-        withCredentials: true, // Đảm bảo gửi cookie
-      });
-  
-      const userDetails = response.data.user;
-  
-      if (!userDetails) {
-        dispatch(logout());
-        navigate('/login'); // Điều hướng người dùng về trang đăng nhập nếu không có thông tin người dùng
-        return;
-      }
-  
-      dispatch(setUser(userDetails)); // Lưu thông tin người dùng vào Redux
-      console.log('Current user details:', userDetails);
-      console.log('Redux state after setUser:', store.getState().user); 
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        if (error.response?.status === 401) {
-          dispatch(logout());
-          navigate('/login');
+  useEffect(() => {
+    const fetchUserDetails = async () => {
+      try {
+        const response = await axios({
+          url: 'http://localhost:3300/user-details', // Endpoint của API
+          withCredentials: true,
+        });
+
+        const userDetails = response.data.user;
+
+        if (userDetails) {
+          dispatch(
+            setUser({
+              id: userDetails.mysql_id?.toString(),
+              mongoId: userDetails._id,
+              fullname: userDetails.fullname,
+              email: userDetails.email,
+              profile_pic: userDetails.profile_pic,
+              role: userDetails.role || "", // Nếu có role thì sử dụng, nếu không để trống
+            })
+          );
         } else {
-          console.error('Unexpected response error:', error.response?.status);
+          // Điều hướng đến trang đăng nhập nếu không có thông tin người dùng
+          dispatch(logout());
+          // navigate('/login');
         }
-      } else {
-        console.error('Unexpected error:', error);
-      }}};
-    
-  useEffect(()=>{
-        fetchUserDetails()
-      },[])
+      } catch (error) {
+        console.error("Error fetching user details:", error);
+      }
+    };
+
+    fetchUserDetails();
+  }, [dispatch]);
   /***socket connection */
   useEffect(() => {
     

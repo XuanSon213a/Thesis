@@ -4,11 +4,12 @@ import { RootState } from './store';
 // Định nghĩa kiểu dữ liệu cho UserState
 export interface UserState {
   id: string;
+  mongoId: string;
   fullname: string;
   email: string;
   role: string;
   profile_pic: string;
-  token: string; // Bạn có thể để trống nếu không cần token
+  token: string; // Có thể là token JWT nếu cần
   selectedUser: string | null;
   onlineUser: string[];
   socketConnection: any | null;
@@ -16,11 +17,12 @@ export interface UserState {
 
 const initialState: UserState = {
   id: "",
+  mongoId: "",
   fullname: "",
   email: "",
-  role: "",
+  role: "", // Nếu không có role, để mặc định là string rỗng
   profile_pic: "",
-  token: "",
+  token: "", // Để trống nếu không có token
   selectedUser: null,
   onlineUser: [],
   socketConnection: null,
@@ -31,23 +33,25 @@ const userSlice = createSlice({
   initialState,
   reducers: {
     setUser: (state, action: PayloadAction<Partial<UserState>>) => {
-      // Cập nhật từng thuộc tính của state bằng giá trị từ action.payload
-      state.id = action.payload.id || state.id;
+      // Cập nhật state từ action.payload, nếu không có giá trị, giữ nguyên giá trị cũ của state
+      state.id = action.payload.id || state.id; // Gán MySQL ID vào `id`
+      state.mongoId = action.payload.mongoId || state.mongoId; // Gán MongoDB ID vào `mongoId`
       state.fullname = action.payload.fullname || state.fullname;
       state.email = action.payload.email || state.email;
-      state.role = action.payload.role || state.role;
-      state.profile_pic = action.payload.profile_pic || state.profile_pic;
+      state.role = action.payload.role || state.role; // Gán role nếu có
+      state.profile_pic = action.payload.profile_pic || state.profile_pic; // Gán profile_pic nếu có
+      state.token = action.payload.token || state.token; // Gán token nếu có
     },
-    logout: () => initialState,
+    logout: () => initialState, // Khi logout, reset state về giá trị mặc định
     setOnlineUser: (state, action: PayloadAction<string[]>) => {
-      state.onlineUser = action.payload;
+      state.onlineUser = action.payload; // Cập nhật danh sách người dùng online
     },
     setSocketConnection: (state, action: PayloadAction<any | null>) => {
-      state.socketConnection = action.payload;
+      state.socketConnection = action.payload; // Cập nhật thông tin kết nối socket
     },
   },
 });
-export const userSliceStore = (state: RootState) => state.user;
+
 export const { setUser, logout, setOnlineUser, setSocketConnection } = userSlice.actions;
 
 export default userSlice.reducer;

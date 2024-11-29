@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { UserState } from '../../../redux/userSlice';
 
 interface User {
-  id: string;
+  mongoId: string;
   fullname: string;
   email?: string;
   profile_pic?: string;
@@ -32,7 +32,7 @@ const UserSearchCard: React.FC<UserSearchCardProps> = ({ userId, name, email, pr
           width={50}
           height={50}
           fullname={name|| user?.fullname}
-          userId={userId||user?.id||""}
+          userId={userId||user?.mongoId||""}
           
           imageUrl={profile_pic|| user?.profile_pic}
         />

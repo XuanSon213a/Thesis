@@ -17,7 +17,10 @@ import UserModel from '../backend/Models/UserModel.js';
 import { Server } from 'socket.io';
 import http from 'http';
 import getUserToken from '../backend/helpers/getUserToken.js';
-import ConversationModel from '../backend/Models/ConversationModel.js';
+import models from '../backend/Models/ConversationModel.js';
+const { MessageModel, ConversationModel } = models;
+
+import getConversation from './helpers/getConversation.js';
  const app = express(); // Chuyển app lên trên
 
 // Cấu hình CORS với tùy chọn chính xác
@@ -68,6 +71,7 @@ const verifyUser = (req, res, next) => {
 
     console.log("Decoded token:", decoded);
     req._id = decoded.id;
+    req.mongoId = decoded.mongoId;
     req.fullname = decoded.fullname;
     req.role = decoded.role; // Add role to request object
     next();
@@ -111,19 +115,22 @@ app.post('/register', async (req, res) => {
     const mongoUser = new UserModel({
       fullname,
       email,
-      password: hash,
+      password: hash, // Store the hashed password
       profile_pic: "", // Default profile picture in MongoDB
-
       mysql_id: userId, // Store the MySQL ID to relate MongoDB data with MySQL
     });
 
-    await mongoUser.save();
+    // Save user in MongoDB and get mongoId
+    const savedMongoUser = await mongoUser.save();
+
+    // Get mongoId from MongoDB user
+    const mongoId = savedMongoUser._id.toString(); // Ensure mongoId is a string
 
     // Return success response
     return res.status(201).json({
       Status: "User registered successfully",
       token: token,
-      user: { id: userId, fullname, email },
+      user: { id: mongoId, fullname, email }, // Use mongoId in the response
     });
 
   } catch (error) {
@@ -131,6 +138,7 @@ app.post('/register', async (req, res) => {
     return res.status(500).json({ Error: "Server error during registration." });
   }
 });
+
 
 
 
@@ -152,19 +160,20 @@ app.post('/login', async (req, res) => {
           const role = data[0].role;
           const profile_pic = data[0].profile_pic;
 
-          // Tạo token với thông tin người dùng
-          const token = jwt.sign(
-            { id, fullname, email, role, profile_pic },
-            process.env.JWT_SECRET,
-            { expiresIn: '1d' }
-          );
+      
+          
 
           // Lấy MongoDB user thông qua MySQL id (mysql_id trong MongoDB)
           try {
             const mongoUser = await UserModel.findOne({ mysql_id: id }); // Tìm người dùng trong MongoDB theo mysql_id
             if (mongoUser) {
               const mongoId = mongoUser._id; // MongoDB ID
-
+              // Tạo token với thông tin người dùng, sử dụng mongoId để tạo token
+              const token = jwt.sign(
+                { id: mongoId,mongoId: mongoId.toString(), fullname, email, role, profile_pic },  // Dùng mongoId thay cho mysqlId
+                process.env.JWT_SECRET,
+                { expiresIn: '1d' }
+              );
               // Trả về cả MySQL ID và MongoDB ID cùng với thông tin khác
               res.cookie('token', token);
               return res.json({
@@ -331,68 +340,140 @@ io.on('connection', async (socket) => {
   const token = socket.handshake.auth.token;
   //current user details
  
-  const user = await getUserToken(token)
+  const user = jwt.verify(token, process.env.JWT_SECRET);
   
-
+  if (!user) {
+    console.log("User not found with the given token");
+    return; // Nếu không tìm thấy người dùng, dừng lại
+  }
     // In ra thông tin người dùng đã kết nối
     console.log("User details:", user);
    
     // create a room 
-    socket.join(user?._id)
-    onlineUser.add(user?._id?.toString())
+    socket.join(user?.mongoId)
+    console.log('user?.mongoId',user?.id)
+    onlineUser.add(user?.mongoId?.toString())
 
     socket.on('message-page',async(id)=>{
       console.log('userId',id)
       const userDetails = await UserModel.findById(id).select("-password")
       
       const payload = {
-          _id : userDetails?._id,
+          _id : userDetails?.id,
+          mongoId: userDetails?.id,
           fullname : userDetails?.fullname,
           email : userDetails?.email,
           profile_pic : userDetails?.profile_pic,
           online : onlineUser.has(id)
       }
       socket.emit('message-user',payload)})
-
+      
     io.emit('onlineUser',Array.from(onlineUser));
 
     socket.on('new message',async(data)=>{
 
       //check conversation is available both user
-      
-      console.log('user',user._id)
-      console.log('new message', data)
-      
-    });
+      let conversation = await ConversationModel.findOne({
+        "$or" : [
+            { sender : data?.sender, receiver : data?.receiver },
+            { sender : data?.receiver, receiver :  data?.sender}
+        ]
+    })
+    console.log('conversation',conversation)
+    //if conversation is not available
+    if(!conversation){
+        const createConversation = await ConversationModel({
+            sender : data?.sender,
+            receiver : data?.receiver
+        })
+        conversation = await createConversation.save()
+    }
+        const message = new MessageModel({
+          text : data.text,
+          imageUrl : data.imageUrl,
+          videoUrl : data.videoUrl,
+          msgByUserId :  data?.msgByUserId,
+        })
+        const saveMessage = await message.save()
 
+        const updateConversation = await ConversationModel.updateOne({ _id : conversation?._id },{
+          "$push" : { messages : saveMessage?._id }
+      })
+        const getConversationMessage = await ConversationModel.findOne({
+        "$or" : [
+            { sender : data?.sender, receiver : data?.receiver },
+            { sender : data?.receiver, receiver :  data?.sender}
+        ]
+    }).populate('messages').sort({ updatedAt : -1 })
+
+    io.to(data?.sender).emit('message',getConversationMessage?.messages || [])
+        io.to(data?.receiver).emit('message',getConversationMessage?.messages || [])
+
+        //send conversation
+        const conversationSender = await getConversation(data?.sender)
+        const conversationReceiver = await getConversation(data?.receiver)
+
+        io.to(data?.sender).emit('conversation',conversationSender)
+        io.to(data?.receiver).emit('conversation',conversationReceiver)
+
+      console.log('user',user.mongoId)
+      console.log('new message', data)
+      console.log('conversation',conversation)
+    });
+//sidebar
+    socket.on('sidebar',async(currentUserId)=>{
+        console.log("current user",currentUserId)
+
+        const conversation = await getConversation(currentUserId)
+
+        socket.emit('conversation',conversation)
+        
+    })
+
+    socket.on('seen',async(msgByUserId)=>{
+        
+        let conversation = await ConversationModel.findOne({
+            "$or" : [
+                { sender : user?.mongoId, receiver : msgByUserId },
+                { sender : msgByUserId, receiver :  user?.mongoId}
+            ]
+        })
+
+        const conversationMessageId = conversation?.messages || []
+
+        const updateMessages  = await MessageModel.updateMany(
+            { _id : { "$in" : conversationMessageId }, msgByUserId : msgByUserId },
+            { "$set" : { seen : true }}
+        )
+
+        //send conversation
+        const conversationSender = await getConversation(user?.mongoId?.toString())
+        const conversationReceiver = await getConversation(msgByUserId)
+
+        io.to(user?.mongoId?.toString()).emit('conversation',conversationSender)
+        io.to(msgByUserId).emit('conversation',conversationReceiver)
+    })
     // Xử lý sự kiện disconnect
     socket.on('disconnect', () => {
-      onlineUser.delete(user?._id)
+      onlineUser.delete(user?.mongoId)
       console.log("Disconnect user", socket.id);
     });
 
 });
 app.get('/user-details', verifyUser, async (req, res) => {
   try {
-    const userId = req._id;
-    console.log("User ID from middleware:", userId);
+    const mongoId = req.mongoId;
+    console.log("User ID from middleware:", mongoId);
 
-    const sql = 'SELECT id, fullname, email, role, profile_pic FROM login WHERE id = ?';
-    console.log("SQL Query:", sql, "Params:", userId);
+    const user = await UserModel.findById(mongoId).select('-password'); // .select('-password') để không trả về password
 
-    db.query(sql, [userId], (err, result) => {
-      if (err) {
-        console.error("Database query error:", err);
-        return res.status(500).json({ Error: "Database query error" });
-      }
-      if (result.length === 0) {
-        console.warn("No user found for ID:", userId);
-        return res.status(404).json({ Error: "User not found" });
-      }
+    if (!user) {
+      console.warn("No user found for MongoDB ID:", mongoId);
+      return res.status(404).json({ Error: "User not found" });
+    }
 
-      console.log("User details fetched successfully:", result[0]);
-      return res.json({ Status: "Success", user: result[0] });
-    });
+    console.log("User details fetched successfully:", user);
+    return res.json({ Status: "Success", user });
   } catch (error) {
     console.error("Error fetching user details:", error);
     return res.status(500).json({ Error: "Server error" });

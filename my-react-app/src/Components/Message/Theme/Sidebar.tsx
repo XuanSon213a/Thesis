@@ -11,7 +11,8 @@ import { RootState } from '../../../redux/store';
 import EditUserDetail from './EditUserDetail';
 import { logout } from '../../../redux/userSlice';
 import SearchUser from '../../Message/Theme/SearchUser';
-import { FaUserPlus } from "react-icons/fa";
+import { FaImage, FaUserPlus } from "react-icons/fa";
+import { FaVideo } from 'react-icons/fa6';
 
 interface StudentData {
   No: number;
@@ -19,19 +20,73 @@ interface StudentData {
   Name: string;
   Class: string;
 }
+interface ConversationUser {
+  sender?: User;
+  receiver?: User;
+  userDetails: User;
+  lastMsg?: {
+      text?: string;
+      imageUrl?: string;
+      videoUrl?: string;
+  };
+  unseenMsg?: number;
+  mongoId: string;
+  id:string;
+}
 
-const Sidebar = () => {
-  const navigate = useNavigate();
-  const dispatch = useDispatch();
+interface User {
+  id: string;
+  mongoId: string;
+  fullname: string;
+  profile_pic?: string;
   
+}
+
+const Sidebar: React.FC = () => {
+  
+  const user = useSelector((state: RootState) => state.user);
   const [editUserOpen, setEditUserOpen] = useState(false);
   const [openSearchUser, setOpenSearchUser] = useState(false);
   const [students, setStudents] = useState<StudentData[]>([]);
-  const [allUser, setAllUser] = useState([]);
+  const [allUser, setAllUser] = useState<ConversationUser[]>([]);
+
   const { id } = useParams<{ id: string }>();
-  const user = useSelector((state: RootState) => state.user);
   const onlineUser = useSelector((state: RootState) => state?.user?.onlineUser);
-  
+  const socketConnection = useSelector((state: RootState) => state?.user?.socketConnection);
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+
+  useEffect(()=>{
+    if(socketConnection){
+        socketConnection.emit('sidebar',user.mongoId)
+        console.log('user.mongoId',user.mongoId)
+        socketConnection.on('conversation',(data: ConversationUser[])=>{
+            console.log('conversation',data)
+            
+            const conversationUserData = data.map((conversationUser,index)=>{
+                if(conversationUser?.sender?.mongoId === conversationUser?.receiver?.mongoId){
+                    return{
+                        ...conversationUser,
+                        userDetails : conversationUser?.sender
+                    }
+                }
+                else if(conversationUser?.receiver?.mongoId !== user?.mongoId){
+                    return{
+                        ...conversationUser,
+                        userDetails : conversationUser.receiver
+                    }
+                }else{
+                    return{
+                        ...conversationUser,
+                        userDetails : conversationUser.sender
+                    }
+                }
+            })
+            .filter((conversationUser) => conversationUser.userDetails);
+            setAllUser(conversationUserData as ConversationUser[]);
+        });
+    }
+},[socketConnection,user])
   // Lấy thông tin người dùng từ Redux
   
   useEffect(() => {
@@ -112,7 +167,7 @@ const Sidebar = () => {
             {user && (
               <>
                 <Avatar
-                  userId={user?.id} 
+                  userId={user?.mongoId} 
                   fullname={user?.fullname || 'User'}
                   imageUrl={user?.profile_pic || ''}
                   width={40}
@@ -156,6 +211,52 @@ const Sidebar = () => {
               </p>
             </div>
           )}
+          {
+                        allUser.map((conv,index)=>{
+                          console.log('conv?.userDetails?.mongoId',conv?.userDetails?.mongoId)
+                            return(
+                                <NavLink to={"/message/"+conv?.userDetails?.mongoId+"/chat"} key={conv?.id} className='flex items-center gap-2 py-3 px-2 border border-transparent hover:border-primary rounded hover:bg-slate-100 cursor-pointer'>
+                                    <div>
+                                        <Avatar
+                                    imageUrl={conv?.userDetails?.profile_pic}
+                                    fullname={conv?.userDetails?.fullname}
+                                    width={40}
+                                    height={40} userId={''}                                        />    
+                                    </div>
+                                    <div>
+                                        <h3 className='text-ellipsis line-clamp-1 font-semibold text-base'>{conv?.userDetails?.fullname}</h3>
+                                        <div className='text-slate-500 text-xs flex items-center gap-1'>
+                                            <div className='flex items-center gap-1'>
+                                                {
+                                                    conv?.lastMsg?.imageUrl && (
+                                                        <div className='flex items-center gap-1'>
+                                                            <span><FaImage/></span>
+                                                            {!conv?.lastMsg?.text && <span>Image</span>  } 
+                                                        </div>
+                                                    )
+                                                }
+                                                {
+                                                    conv?.lastMsg?.videoUrl && (
+                                                        <div className='flex items-center gap-1'>
+                                                            <span><FaVideo/></span>
+                                                            {!conv?.lastMsg?.text && <span>Video</span>}
+                                                        </div>
+                                                    )
+                                                }
+                                            </div>
+                                            <p className='text-ellipsis line-clamp-1'>{conv?.lastMsg?.text}</p>
+                                        </div>
+                                    </div>
+                                    {
+                                        Boolean(conv?.unseenMsg) && (
+                                            <p className='text-xs w-6 h-6 flex justify-center items-center ml-auto p-1 bg-slate-200 text-black font-semibold rounded-full'>{conv?.unseenMsg}</p>
+                                        )
+                                    }
+
+                                </NavLink>
+                            )
+                        })
+                    }
         </div>
       </div>
 

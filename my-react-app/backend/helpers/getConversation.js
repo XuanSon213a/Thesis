@@ -1,4 +1,5 @@
-import { ConversationModel } from "../Models/ConversationModel";
+import models from '../Models/ConversationModel.js';
+const {  ConversationModel } = models;
 
 const getConversation = async (currentUserId) => {
   if (currentUserId) {
@@ -24,7 +25,8 @@ const getConversation = async (currentUserId) => {
       }, 0);
 
       return {
-        _id: conv?._id,
+        
+        mongoId: conv?.mongoId,
         sender: conv?.sender,
         receiver: conv?.receiver,
         unseenMsg: countUnseenMsg,

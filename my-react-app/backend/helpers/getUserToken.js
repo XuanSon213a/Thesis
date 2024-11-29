@@ -17,7 +17,7 @@ const getUserToken = async (token) => {
     const decode = jwt.verify(token, process.env.JWT_SECRET);
 
     
-    const user = await UserModel.findOne({ mysql_id: decode.id }).select('-password');
+    const user = await UserModel.findOne({ mysql_id: decode.id, }).select('-password');
     
     if (!user) {
       return {

@@ -166,7 +166,8 @@ export default function SignIn() {
         console.log('Login successful!');
   
         console.log('Dispatching user information with payload:', {
-          id: result.id,
+          id: result.mysqlId,          // Use `mysqlId` from the response
+            mongoId: result.mongoId,
           fullname: result.fullname,
           email: result.email,
           role: result.role,
@@ -176,19 +177,20 @@ export default function SignIn() {
         // Dispatch thông tin người dùng vào Redux và lưu token vào localStorage
         dispatch(
           setUser({
-            id: result._id,
+            id: result.mysqlId,          // Use `mysqlId` from the response
+            mongoId: result.mongoId,      // Use `mongoId` from the response
             fullname: result.fullname,
             email: result.email,
             role: result.role,
-            profile_pic: result.profile_pic || "",
+            profile_pic: result.profile_pic || "", // Default to empty string if profile_pic is missing
             token: result.token || '',
-             
           })
         );
         localStorage.setItem('token', result.token);
 
         console.log("Dispatching user information", {
-          _id: result.id,
+          id: result.mysqlId,          // Use `mysqlId` from the response
+            mongoId: result.mongoId,
           fullname: result.fullname,
           email: result.email,
           role: result.role,

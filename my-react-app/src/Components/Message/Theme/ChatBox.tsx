@@ -8,12 +8,12 @@ import { FaAngleLeft,FaImage,FaPlus, FaVideo } from "react-icons/fa6";
 import uploadFile from '../../../helps/uploadFile';
 import { IoClose } from 'react-icons/io5';
 import Loading from './Loading';
-// import moment from 'moment';
+import moment from 'moment';
 import bg from'../../../assets/images/bg.png';
 import { IoMdSend } from 'react-icons/io';
 import { ObjectId } from 'mongodb';
 interface User {
-  _id: string;
+  mongoId: string;
   fullname: string;
   email: string;
   profile_pic: string;
@@ -21,6 +21,7 @@ interface User {
 }
 
 interface Message {
+  
   text: string;
   imageUrl: string;
   videoUrl: string;
@@ -32,7 +33,7 @@ const ChatBox: React.FC  = () =>{
   const user = useSelector((state: RootState) => state.user); 
   const params = useParams();
   const socketConnection = useSelector((state: RootState) => state?.user?.socketConnection);
-  // console.log('params',params.id);
+  console.log('params',params.id);
   
 
   
@@ -41,7 +42,7 @@ const ChatBox: React.FC  = () =>{
     email : "",
     profile_pic : "",
     online : false,
-    _id : ""
+    mongoId : ""
   })
   const [openImageVideoUpload, setOpenImageVideoUpload] = useState(false);
 
@@ -53,6 +54,13 @@ const ChatBox: React.FC  = () =>{
   const [loading, setLoading] = useState(false);
   const [allMessage, setAllMessage] = useState<Message[]>([]);
   const currentMessage = useRef<HTMLDivElement>(null);
+
+  useEffect(()=>{
+    if(currentMessage.current){
+        currentMessage.current.scrollIntoView({behavior : 'smooth', block : 'end'})
+    }
+      },[allMessage])
+
   const handleUploadImageVideoOpen =() =>{
     setOpenImageVideoUpload(prev => !prev);
   };
@@ -113,6 +121,7 @@ const ChatBox: React.FC  = () =>{
       })
 
       socketConnection.on('message', (data: Message[]) => {
+        console.log('message data',data)
         setAllMessage(data);
       });
     }
@@ -129,17 +138,17 @@ const handleOnChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 
 const handleSendMessage = (e: React.FormEvent) => {
   e.preventDefault();
-  console.log('Sender user ID:', user.id);
+  console.log('Sender user ID:', user);
   if (message.text || message.imageUrl || message.videoUrl) {
     if (socketConnection) {
       socketConnection.emit('new message', {
-        sender: user?.id,
+        sender: user?.mongoId,
         receiver: params.id,
         text: message.text,
         imageUrl: message.imageUrl,
         videoUrl: message.videoUrl,
-        msgByUserId: user?.id
-      });
+        msgByUserId: user?.mongoId
+      })
       console.log('user?._id',user);
       setMessage({
         text: "",
@@ -163,7 +172,7 @@ const handleSendMessage = (e: React.FormEvent) => {
                         height={50}
                         imageUrl={dataUser?.profile_pic}
                         fullname={dataUser?.fullname}
-                        userId={dataUser?._id}
+                        userId={dataUser?.mongoId}
                       />
                     </div>
                     <div>
@@ -187,7 +196,7 @@ const handleSendMessage = (e: React.FormEvent) => {
             {
                       allMessage.map((msg,index)=>{
                         return(
-                          <div className={` p-1 py-1 rounded w-fit max-w-[280px] md:max-w-sm lg:max-w-md ${user.id === msg?.msgByUserId ? "ml-auto bg-teal-100" : "bg-white"}`}>
+                          <div className={` p-1 py-1 rounded w-fit max-w-[280px] md:max-w-sm lg:max-w-md ${user.mongoId === msg?.msgByUserId ? "ml-auto bg-teal-100" : "bg-white"}`}>
                             <div className='w-full relative'>
                               {
                                 msg?.imageUrl && (
@@ -208,7 +217,7 @@ const handleSendMessage = (e: React.FormEvent) => {
                               }
                             </div>
                             <p className='px-2'>{msg.text}</p>
-                            {/* <p className='text-xs ml-auto w-fit'>{moment(msg.createdAt).format('hh:mm')}</p> */}
+                            <p className='text-xs ml-auto w-fit'>{moment(msg.createdAt).format('hh:mm')}</p>
                           </div>
                         )
                       })
