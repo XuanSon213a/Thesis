@@ -350,7 +350,7 @@ io.on('connection', async (socket) => {
     console.log("User details:", user);
    
     // create a room 
-    socket.join(user?.mongoId)
+    socket.join(user?.id)
     console.log('user?.mongoId',user?.id)
     onlineUser.add(user?.mongoId?.toString())
 
@@ -359,8 +359,8 @@ io.on('connection', async (socket) => {
       const userDetails = await UserModel.findById(id).select("-password")
       
       const payload = {
-          _id : userDetails?.id,
-          mongoId: userDetails?.id,
+          id : userDetails?.id,
+          mongoId: userDetails?._id,
           fullname : userDetails?.fullname,
           email : userDetails?.email,
           profile_pic : userDetails?.profile_pic,

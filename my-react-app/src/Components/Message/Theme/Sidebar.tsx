@@ -35,7 +35,7 @@ interface ConversationUser {
 }
 
 interface User {
-  id: string;
+  _id: string;
   mongoId: string;
   fullname: string;
   profile_pic?: string;
@@ -213,9 +213,10 @@ const Sidebar: React.FC = () => {
           )}
           {
                         allUser.map((conv,index)=>{
-                          console.log('conv?.userDetails?.mongoId',conv?.userDetails?.mongoId)
+                          console.log('conv?.userDetails?.mongoId',conv?.userDetails?._id)
+                          console.log('conv?.mongoId',conv?.id)
                             return(
-                                <NavLink to={"/message/"+conv?.userDetails?.mongoId+"/chat"} key={conv?.id} className='flex items-center gap-2 py-3 px-2 border border-transparent hover:border-primary rounded hover:bg-slate-100 cursor-pointer'>
+                                <NavLink to={"/message/"+conv?.userDetails?._id+"/chat"} key={conv?.id} className='flex items-center gap-2 py-3 px-2 border border-transparent hover:border-primary rounded hover:bg-slate-100 cursor-pointer'>
                                     <div>
                                         <Avatar
                                     imageUrl={conv?.userDetails?.profile_pic}

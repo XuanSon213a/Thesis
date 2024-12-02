@@ -59,16 +59,16 @@ const router = createBrowserRouter([
       
     ],
   },
-  {
-    path: "/message/:userId",
-    element: <MessagePage />,
-    children: [
-      {
-        path: "chat",
-        element: <ChatBox />,
-      }
-    ]
-  },
+  // {
+  //   path: "/message/:userId",
+  //   element: <MessagePage />,
+  //   children: [
+  //     {
+  //       path: "chat",
+  //       element: <ChatBox />,
+  //     }
+  //   ]
+  // },
 ]);
 
 const App: React.FC = () => {
