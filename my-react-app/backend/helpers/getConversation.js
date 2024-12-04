@@ -25,7 +25,7 @@ const getConversation = async (currentUserId) => {
       }, 0);
 
       return {
-        id:conv?._id,
+        id:conv?.id,
         mongoId: conv?.mongoId,
         sender: conv?.sender,
         receiver: conv?.receiver,

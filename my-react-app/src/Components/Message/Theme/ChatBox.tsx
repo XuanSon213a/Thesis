@@ -13,6 +13,7 @@ import bg from'../../../assets/images/bg.png';
 import { IoMdSend } from 'react-icons/io';
 import { ObjectId } from 'mongodb';
 interface User {
+  id: string;
   mongoId: string;
   fullname: string;
   email: string;
@@ -42,7 +43,8 @@ const ChatBox: React.FC  = () =>{
     email : "",
     profile_pic : "",
     online : false,
-    mongoId : ""
+    mongoId : "",
+    id:""
   })
   const [openImageVideoUpload, setOpenImageVideoUpload] = useState(false);
 
@@ -149,7 +151,7 @@ const handleSendMessage = (e: React.FormEvent) => {
         videoUrl: message.videoUrl,
         msgByUserId: user?.mongoId
       })
-      console.log('user?._id',user);
+      
       setMessage({
         text: "",
         imageUrl: "",
@@ -172,7 +174,7 @@ const handleSendMessage = (e: React.FormEvent) => {
                         height={50}
                         imageUrl={dataUser?.profile_pic}
                         fullname={dataUser?.fullname}
-                        userId={dataUser?.mongoId}
+                        userId={dataUser?.id}
                       />
                     </div>
                     <div>

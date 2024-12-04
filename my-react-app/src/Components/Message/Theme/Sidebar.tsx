@@ -31,7 +31,7 @@ interface ConversationUser {
   };
   unseenMsg?: number;
   mongoId: string;
-  id:string;
+  id: string;
 }
 
 interface User {
@@ -59,18 +59,18 @@ const Sidebar: React.FC = () => {
   useEffect(()=>{
     if(socketConnection){
         socketConnection.emit('sidebar',user.mongoId)
-        console.log('user.mongoId',user.mongoId)
+        
         socketConnection.on('conversation',(data: ConversationUser[])=>{
             console.log('conversation',data)
-            
+            console.log('user.mongoId',user.mongoId)
             const conversationUserData = data.map((conversationUser,index)=>{
-                if(conversationUser?.sender?.mongoId === conversationUser?.receiver?.mongoId){
+                if(conversationUser?.sender?._id === conversationUser?.receiver?._id){
                     return{
                         ...conversationUser,
                         userDetails : conversationUser?.sender
                     }
                 }
-                else if(conversationUser?.receiver?.mongoId !== user?.mongoId){
+                else if(conversationUser?.receiver?._id !== user?.mongoId){
                     return{
                         ...conversationUser,
                         userDetails : conversationUser.receiver
@@ -222,7 +222,8 @@ const Sidebar: React.FC = () => {
                                     imageUrl={conv?.userDetails?.profile_pic}
                                     fullname={conv?.userDetails?.fullname}
                                     width={40}
-                                    height={40} userId={''}                                        />    
+                                    height={40} 
+                                    userId={conv?.userDetails?._id}                                        />    
                                     </div>
                                     <div>
                                         <h3 className='text-ellipsis line-clamp-1 font-semibold text-base'>{conv?.userDetails?.fullname}</h3>

@@ -354,21 +354,35 @@ io.on('connection', async (socket) => {
     console.log('user?.mongoId',user?.id)
     onlineUser.add(user?.mongoId?.toString())
 
+    io.emit('onlineUser',Array.from(onlineUser));
+
     socket.on('message-page',async(id)=>{
       console.log('userId',id)
       const userDetails = await UserModel.findById(id).select("-password")
       
       const payload = {
           id : userDetails?.id,
-          mongoId: userDetails?._id,
+          mongoId: userDetails?.mongoId,
           fullname : userDetails?.fullname,
           email : userDetails?.email,
           profile_pic : userDetails?.profile_pic,
           online : onlineUser.has(id)
       }
-      socket.emit('message-user',payload)})
+      socket.emit('message-user',payload)
+      //get previous message
+      const getConversationMessage = await ConversationModel.findOne({
+        "$or" : [
+            { sender : user?.mongoId, receiver : id },
+            { sender : id, receiver :  user?.mongoId}
+        ]
+    }).populate('messages').sort({ updatedAt : -1 })
+    console.log('sender',user?.mongoId);
+    console.log('receiver',id);
+    socket.emit('message',getConversationMessage?.messages || [])
+    })
       
-    io.emit('onlineUser',Array.from(onlineUser));
+    
+      
 
     socket.on('new message',async(data)=>{
 
@@ -438,7 +452,8 @@ io.on('connection', async (socket) => {
                 { sender : msgByUserId, receiver :  user?.mongoId}
             ]
         })
-
+        console.log("sender seen : ",user?.mongoId)
+        console.log("receiver seen : ",msgByUserId)
         const conversationMessageId = conversation?.messages || []
 
         const updateMessages  = await MessageModel.updateMany(
