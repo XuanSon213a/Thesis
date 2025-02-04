@@ -1,5 +1,7 @@
 import express from 'express';
 import mysql from 'mysql';
+import mongoose from 'mongoose';
+
 import bodyParser from 'body-parser';
 import cors from 'cors'; // Không cần gọi lại require cho cors
 import jwt from 'jsonwebtoken';
@@ -18,9 +20,10 @@ import { Server } from 'socket.io';
 import http from 'http';
 import getUserToken from '../backend/helpers/getUserToken.js';
 import models from '../backend/Models/ConversationModel.js';
-const { MessageModel, ConversationModel } = models;
+const { MessageModel, ConversationModel, GroupConversationModel } = models;
 
 import getConversation from './helpers/getConversation.js';
+import GroupModel from './Models/GroupModel.js';
  const app = express(); // Chuyển app lên trên
 
 // Cấu hình CORS với tùy chọn chính xác
@@ -56,7 +59,7 @@ const db = mysql.createConnection({
 connectDB();
 
 const verifyUser = (req, res, next) => {
-  const token = req.cookies.token;
+  const token = req.cookies.token|| req.headers.authorization?.split(' ')[1];
 
   if (!token) {
     console.warn("No token found in cookies");
@@ -73,7 +76,9 @@ const verifyUser = (req, res, next) => {
     req._id = decoded.id;
     req.mongoId = decoded.mongoId;
     req.fullname = decoded.fullname;
-    req.role = decoded.role; // Add role to request object
+    req.role = decoded.role;
+     // Add role to request object
+     req.user = decoded;
     next();
   });
 };
@@ -327,6 +332,7 @@ const io = new Server(server, {
     credentials: true,
   },
 });
+
 // Socket connection
 app.use(cors(corsOptions));
 
@@ -356,118 +362,447 @@ io.on('connection', async (socket) => {
 
     io.emit('onlineUser',Array.from(onlineUser));
 
-    socket.on('message-page',async(id)=>{
-      console.log('userId',id)
-      const userDetails = await UserModel.findById(id).select("-password")
-      
-      const payload = {
-          id : userDetails?.id,
-          mongoId: userDetails?.mongoId,
-          fullname : userDetails?.fullname,
-          email : userDetails?.email,
-          profile_pic : userDetails?.profile_pic,
-          online : onlineUser.has(id)
+    // Tham gia vào nhóm
+    socket.on('join-group', async (groupId) => {
+      const group = await GroupModel.findById(groupId);
+      if (!group) {
+        return socket.emit('error', "Group not found");
       }
-      socket.emit('message-user',payload)
-      //get previous message
+      socket.join(groupId); // Tham gia phòng của nhóm
+      console.log(`User ${user.mongoId} joined group ${groupId}`);
+    });
+
+
+    socket.on('message-page', async (id, isGroup = false) => {
+  try {
+    if (isGroup) {
+      // Logic xử lý nhóm
+      console.log('Fetching messages for group:', id);
+
+      // Lấy chi tiết nhóm
+      const groupDetails = await GroupModel.findById(id).populate({
+        path: 'members',
+        select: '_id fullname email profile_pic', // Lấy các trường cần thiết
+      });
+      
+      if (!groupDetails) {
+        return socket.emit('error', "Group not found");
+      }
+
+      // Tạo payload cho thông tin nhóm
+      const groupPayload = {
+        id: groupDetails._id.toString(),
+        name: groupDetails.fullname,
+        description: groupDetails.description || "",
+        members: groupDetails.members.map(member => ({
+          _id: member._id.toString(),
+          
+          fullname: member.fullname || "Unknown",
+          email: member.email || "",
+          profile_pic: member.profile_pic || "",
+        })),
+      };
+      socket.emit('group-details', groupPayload);
+
+      // Lấy các tin nhắn trước đó của nhóm
+      const groupConversation = await GroupConversationModel.findOne({ groupId: id })
+        .populate({
+          path: 'messages',
+          populate: { path: 'msgByUserId', select: 'fullname profile_pic _id' }, // Lấy thông tin người gửi
+        })
+        .sort({ updatedAt: -1 });
+
+      // Trả về danh sách tin nhắn nhóm
+      socket.emit('message', groupConversation?.messages || []);
+      console.log("Group conversation found:", groupConversation);
+      console.log("Group messages sent to client:", groupConversation?.messages || []);
+    } else {
+      // Logic xử lý tin nhắn cá nhân
+      console.log('Fetching messages for user:', id);
+
+      // Lấy thông tin chi tiết người dùng
+      const userDetails = await UserModel.findById(id).select("-password");
+      if (!userDetails) {
+        return socket.emit('error', "User not found");
+      }
+
+      const payload = {
+        id: userDetails?.id,
+        mongoId: userDetails?.mongoId,
+        fullname: userDetails?.fullname,
+        email: userDetails?.email,
+        profile_pic: userDetails?.profile_pic,
+        online: onlineUser.has(id),
+      };
+      socket.emit('message-user', payload);
+
+      // Lấy các tin nhắn trước đó
       const getConversationMessage = await ConversationModel.findOne({
-        "$or" : [
-            { sender : user?.mongoId, receiver : id },
-            { sender : id, receiver :  user?.mongoId}
+        "$or": [
+          { sender: user?.mongoId, receiver: id },
+          { sender: id, receiver: user?.mongoId },
         ]
-    }).populate('messages').sort({ updatedAt : -1 })
-    console.log('sender',user?.mongoId);
-    console.log('receiver',id);
-    socket.emit('message',getConversationMessage?.messages || [])
-    })
+      }).populate('messages').sort({ updatedAt: -1 });
+
+      socket.emit('message', getConversationMessage?.messages || []);
+    }
+  } catch (error) {
+    console.error("Error in message-page:", error.message);
+    socket.emit('error', "Failed to fetch messages");
+  }
+});
+
       
     
       
 
-    socket.on('new message',async(data)=>{
+socket.on('new message', async (data) => {
+  try {
+    if (data.isGroup) {
+      // Xử lý tin nhắn nhóm
+      console.log("Group message received:", data);
 
-      //check conversation is available both user
+      // Kiểm tra nhóm tồn tại
+      const group = await GroupModel.findById(data.groupId);
+      if (!group) {
+        return socket.emit('error', "Group not found");
+      }
+
+      // Tạo tin nhắn
+      const message = new MessageModel({
+        text: data.text,
+        imageUrl: data.imageUrl,
+        videoUrl: data.videoUrl,
+        msgByUserId: data.msgByUserId,
+        groupId: data.groupId,
+      });
+
+      const savedMessage = await message.save();
+
+      // Populate msgByUserId trước khi gửi tin nhắn
+      const populatedMessage = await MessageModel.findById(savedMessage._id).populate({
+        path: 'msgByUserId',
+        select: 'fullname profile_pic _id',
+      });
+
+      // Tìm hoặc tạo GroupConversation
+      let groupConversation = await GroupConversationModel.findOne({ groupId: data.groupId });
+      if (!groupConversation) {
+        groupConversation = new GroupConversationModel({
+          groupId: data.groupId,
+          messages: [populatedMessage._id],
+          lastMessage: populatedMessage._id,
+        });
+        await groupConversation.save();
+      } else {
+        groupConversation.messages.push(populatedMessage._id);
+        groupConversation.lastMessage = populatedMessage._id;
+        groupConversation.updatedAt = Date.now();
+        await groupConversation.save();
+      }
+
+      // Gửi tin nhắn tới tất cả thành viên trong nhóm
+      io.to(data.groupId).emit('message', {
+        message: populatedMessage,
+        groupId: data.groupId,
+      });
+
+      console.log("Emitting group message:", {
+        message: populatedMessage,
+        groupId: data.groupId,
+      });
+    } else {
+      // Xử lý tin nhắn cá nhân
+      console.log("Personal message received:", data);
+
+      // Kiểm tra cuộc trò chuyện có tồn tại
       let conversation = await ConversationModel.findOne({
-        "$or" : [
-            { sender : data?.sender, receiver : data?.receiver },
-            { sender : data?.receiver, receiver :  data?.sender}
-        ]
-    })
-    console.log('conversation',conversation)
-    //if conversation is not available
-    if(!conversation){
-        const createConversation = await ConversationModel({
-            sender : data?.sender,
-            receiver : data?.receiver
-        })
-        conversation = await createConversation.save()
+        "$or": [
+          { sender: data.sender, receiver: data.receiver },
+          { sender: data.receiver, receiver: data.sender },
+        ],
+      });
+
+      // Nếu cuộc trò chuyện chưa tồn tại
+      if (!conversation) {
+        const createConversation = new ConversationModel({
+          sender: data.sender,
+          receiver: data.receiver,
+        });
+        conversation = await createConversation.save();
+      }
+
+      // Tạo tin nhắn
+      const message = new MessageModel({
+        text: data.text,
+        imageUrl: data.imageUrl,
+        videoUrl: data.videoUrl,
+        msgByUserId: data.msgByUserId,
+      });
+
+      const savedMessage = await message.save();
+
+      // Cập nhật cuộc trò chuyện
+      await ConversationModel.updateOne(
+        { _id: conversation._id },
+        { "$push": { messages: savedMessage._id } }
+      );
+
+      // Lấy lại tin nhắn sau khi cập nhật
+      const getConversationMessage = await ConversationModel.findOne({
+        "$or": [
+          { sender: data.sender, receiver: data.receiver },
+          { sender: data.receiver, receiver: data.sender },
+        ],
+      }).populate('messages').sort({ updatedAt: -1 });
+
+      // Gửi tin nhắn tới người gửi và người nhận
+      io.to(data.sender).emit('message', getConversationMessage?.messages || []);
+      io.to(data.receiver).emit('message', getConversationMessage?.messages || []);
     }
-        const message = new MessageModel({
-          text : data.text,
-          imageUrl : data.imageUrl,
-          videoUrl : data.videoUrl,
-          msgByUserId :  data?.msgByUserId,
-        })
-        const saveMessage = await message.save()
+  } catch (error) {
+    console.error("Error in new message:", error.message);
+    socket.emit('error', "Failed to send message");
+  }
+});
 
-        const updateConversation = await ConversationModel.updateOne({ _id : conversation?._id },{
-          "$push" : { messages : saveMessage?._id }
-      })
-        const getConversationMessage = await ConversationModel.findOne({
-        "$or" : [
-            { sender : data?.sender, receiver : data?.receiver },
-            { sender : data?.receiver, receiver :  data?.sender}
-        ]
-    }).populate('messages').sort({ updatedAt : -1 })
-
-    io.to(data?.sender).emit('message',getConversationMessage?.messages || [])
-        io.to(data?.receiver).emit('message',getConversationMessage?.messages || [])
-
-        //send conversation
-        const conversationSender = await getConversation(data?.sender)
-        const conversationReceiver = await getConversation(data?.receiver)
-
-        io.to(data?.sender).emit('conversation',conversationSender)
-        io.to(data?.receiver).emit('conversation',conversationReceiver)
-
-      console.log('user',user.mongoId)
-      console.log('new message', data)
-      console.log('conversation',conversation)
-    });
 //sidebar
-    socket.on('sidebar',async(currentUserId)=>{
-        console.log("current user",currentUserId)
+socket.on('sidebar', async (currentUserId) => {
+  try {
+    console.log("Fetching sidebar for current user:", currentUserId);
 
-        const conversation = await getConversation(currentUserId)
+    // Lấy danh sách cuộc trò chuyện cá nhân
+    const personalConversations = await getConversation(currentUserId);
+    
+    // Lấy danh sách các nhóm mà người dùng tham gia
+    const groupConversations = await GroupModel.find({ members: currentUserId })
+      .select("_id fullname description profile_pic members   updatedAt")
+      .sort({ updatedAt: -1 });
 
-        socket.emit('conversation',conversation)
-        
-    })
+    // Kết hợp danh sách cá nhân và nhóm
+    const allConversations = [
+      ...personalConversations, // Các cuộc trò chuyện cá nhân
+      ...groupConversations.map((group) => ({
+        id: group._id,
+        isGroup: true,
+        lastMsg: null, // Tin nhắn cuối cùng của nhóm (nếu cần)
+        unseenMsg: 0, // Số tin nhắn chưa đọc
+        userDetails: {
+          _id: group._id.toString(),
+          fullname: group.fullname,
+          profile_pic: group.profile_pic || "", // Avatar nhóm
+          isGroup: true,
+          description: group.description || "", // Mô tả nhóm
+          members: group.members || [], // Danh sách thành viên
+        },
+      })),
+    ];
+    console.log("All Conversations Sent to Client:",allConversations);
+    // Gửi dữ liệu đến client
+    socket.emit('conversation', allConversations);
+  } catch (error) {
+    console.error("Error in sidebar:", error.message);
+    socket.emit('error', "Failed to fetch sidebar conversations");
+  }
+});
 
-    socket.on('seen',async(msgByUserId)=>{
-        
-        let conversation = await ConversationModel.findOne({
-            "$or" : [
-                { sender : user?.mongoId, receiver : msgByUserId },
-                { sender : msgByUserId, receiver :  user?.mongoId}
-            ]
-        })
-        console.log("sender seen : ",user?.mongoId)
-        console.log("receiver seen : ",msgByUserId)
-        const conversationMessageId = conversation?.messages || []
+    // Tham gia tất cả các nhóm của người dùng khi kết nối
+  const userGroups = await GroupModel.find({ members: user.id });
+  userGroups.forEach(group => socket.join(group._id.toString()));
 
-        const updateMessages  = await MessageModel.updateMany(
-            { _id : { "$in" : conversationMessageId }, msgByUserId : msgByUserId },
-            { "$set" : { seen : true }}
-        )
+  console.log(`User ${user.id} joined groups:`, userGroups.map(group => group._id));
 
-        //send conversation
-        const conversationSender = await getConversation(user?.mongoId?.toString())
-        const conversationReceiver = await getConversation(msgByUserId)
+  // Tạo nhóm mới
+  socket.on('create-group', async (data) => {
+    const { fullname, members } = data; // `members` là danh sách ID thành viên
+    if (!fullname || !members || !members.length) {
+      return socket.emit('error', 'Group name and members are required.');
+    }
 
-        io.to(user?.mongoId?.toString()).emit('conversation',conversationSender)
-        io.to(msgByUserId).emit('conversation',conversationReceiver)
-    })
+    const group = new GroupModel({
+      fullname,
+      members,
+      createdBy: user.id,
+    });
+
+    const savedGroup = await group.save();
+
+    // Thêm tất cả thành viên vào phòng nhóm
+    members.forEach(member => {
+      io.to(member).emit('group-created', savedGroup);
+      io.sockets.sockets.get(member)?.join(savedGroup._id.toString());
+    });
+
+    console.log('Group created:', savedGroup);
+    socket.emit('group-created', savedGroup);
+  });
+
+//   socket.on('group-message-page', async (groupId) => {
+//   try {
+//     const groupMessages = await MessageModel.find({ groupId })
+//       .populate('msgByUserId', 'fullname profile_pic') // Lấy thông tin người gửi
+//       .sort({ createdAt: 1 });
+
+//     const messagesWithSender = groupMessages.map((msg) => ({
+//       ...msg.toObject(),
+//       senderName: msg.msgByUserId.fullname, // Thêm tên người gửi
+//     }));
+
+//     socket.emit('group-messages', messagesWithSender || []);
+//   } catch (error) {
+//     console.error('Error fetching group messages:', error);
+//     socket.emit('group-messages', []); // Gửi danh sách rỗng nếu lỗi xảy ra
+//   }
+// });
+
+  
+  
+  
+//   socket.on('new group message', async (data) => {
+//     const { groupId, sender, text, imageUrl, videoUrl } = data;
+  
+//     try {
+//       const user = await UserModel.findById(sender); // Lấy thông tin người gửi
+  
+//       const newMessage = new MessageModel({
+//         text,
+//         imageUrl,
+//         videoUrl,
+//         msgByUserId: sender,
+//         groupId,
+//       });
+  
+//       const savedMessage = await newMessage.save();
+  
+//       const messageWithSender = {
+//         ...savedMessage.toObject(),
+//         senderName: user.fullname, // Thêm tên người gửi
+//       };
+  
+//       const group = await GroupModel.findById(groupId).populate('members');
+//       group.members.forEach((member) => {
+//         io.to(member.toString()).emit('group message', messageWithSender);
+//       });
+  
+//       console.log('New group message sent:', messageWithSender);
+//     } catch (error) {
+//       console.error('Error sending group message:', error);
+//     }
+//   });
+  
+  
+  
+  
+//   socket.on('seen-group', async (groupId) => {
+//     try {
+//       // Kiểm tra nếu groupId không hợp lệ
+//       if (!mongoose.Types.ObjectId.isValid(groupId)) {
+//         return socket.emit('error', "Invalid groupId");
+//       }
+  
+//       // Cập nhật tin nhắn thành đã xem
+//       const updatedMessages = await MessageModel.updateMany(
+//         { groupId: mongoose.Types.ObjectId(groupId), seen: false },
+//         { $set: { seen: true } }
+//       );
+  
+//       console.log(`Marked messages as seen for group ${groupId}`);
+//       socket.emit('group-seen', { groupId, success: true });
+//     } catch (error) {
+//       console.error('Error marking messages as seen:', error.message);
+//       socket.emit('error', "Failed to mark messages as seen");
+//     }
+//   });
+  
+//   socket.on('sidebar-group', async (userId) => {
+//     try {
+//       // Tìm tất cả nhóm mà người dùng tham gia
+//       const groups = await GroupModel.find({ members: userId })
+//         .populate('messages')
+//         .populate('members', 'fullname profile_pic');
+  
+//       // Chuẩn bị dữ liệu trả về
+//       const groupData = groups.map((group) => {
+//         const lastMessage = group.messages[group.messages.length - 1];
+//         return {
+//           groupId: group._id,
+//           groupName: group.fullname,
+//           lastMessage: lastMessage ? lastMessage.text : 'No messages yet',
+//           members: group.members,
+//         };
+//       });
+  
+//       // Gửi danh sách nhóm về client
+//       socket.emit('sidebar-group-data', groupData);
+//     } catch (error) {
+//       console.error('Error fetching sidebar group data:', error);
+//     }
+//   });
+  
+
+socket.on('join-group', (groupId) => {
+  socket.join(groupId);
+  console.log(`User ${socket.id} joined group ${groupId}`);
+});
+
+  // Rời nhóm
+  socket.on('leave-group', async (groupId) => {
+    if (!groupId) {
+      return socket.emit('error', 'Group ID is required.');
+    }
+
+    const group = await GroupModel.findById(groupId);
+    if (!group) {
+      return socket.emit('error', 'Group not found.');
+    }
+
+    // Xóa người dùng khỏi nhóm
+    group.members = group.members.filter(member => member.toString() !== user.id.toString());
+    await group.save();
+
+    socket.leave(groupId);
+    io.to(groupId).emit('member-left', { userId: user.id, groupId });
+
+    console.log(`User ${user.id} left group ${groupId}`);
+  });
+  socket.on("fetch-group-details", async (groupId, callback) => {
+    try {
+      const group = await GroupModel.findById(groupId).select("name members profile_pic");
+      if (!group) {
+        return callback(null);
+      }
+  
+      callback(group);
+    } catch (error) {
+      console.error("Error fetching group details:", error.message);
+      callback(null);
+    }
+  });
+//   socket.on('seen',async(msgByUserId)=>{
+    
+//     let conversation = await ConversationModel.findOne({
+//         "$or" : [
+//             { sender : user?.mongoId, receiver : msgByUserId },
+//             { sender : msgByUserId, receiver :  user?.mongoId}
+//         ]
+//     })
+//     console.log("sender seen : ",user?.mongoId)
+//     console.log("receiver seen : ",msgByUserId)
+//     const conversationMessageId = conversation?.messages || []
+
+//     const updateMessages  = await MessageModel.updateMany(
+//         { _id : { "$in" : conversationMessageId }, msgByUserId : msgByUserId },
+//         { "$set" : { seen : true }}
+//     )
+
+//     //send conversation
+//     const conversationSender = await getConversation(user?.mongoId?.toString())
+//     const conversationReceiver = await getConversation(msgByUserId)
+
+//     io.to(user?.mongoId?.toString()).emit('conversation',conversationSender)
+//     io.to(msgByUserId).emit('conversation',conversationReceiver)
+// })
+  
     // Xử lý sự kiện disconnect
     socket.on('disconnect', () => {
       onlineUser.delete(user?.mongoId)

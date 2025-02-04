@@ -58,7 +58,17 @@ const router = createBrowserRouter([
       },
       
     ],
+  },{
+    path: "/message/:id/group", // Tuyến đường cho nhóm
+    element: <MessagePage />,
+    children: [
+      {
+        path: "chat",
+        element: <ChatBox />,
+      },
+    ],
   },
+  
   // {
   //   path: "/message/:userId",
   //   element: <MessagePage />,

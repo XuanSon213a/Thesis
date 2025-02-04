@@ -12,7 +12,8 @@ import EditUserDetail from './EditUserDetail';
 import { logout } from '../../../redux/userSlice';
 import SearchUser from '../../Message/Theme/SearchUser';
 import { FaImage, FaUserPlus } from "react-icons/fa";
-import { FaVideo } from 'react-icons/fa6';
+import { FaVideo,FaPeopleGroup } from 'react-icons/fa6';
+import CreateGroup from './CreateGroup';
 
 interface StudentData {
   No: number;
@@ -36,17 +37,22 @@ interface ConversationUser {
 
 interface User {
   _id: string;
-  mongoId: string;
+  mongoId?: string;
   fullname: string;
   profile_pic?: string;
-  
+  isGroup: boolean;
 }
-
+interface Group {
+  _id: string;
+  fullname: string;
+  profile_pic?: string;
+}
 const Sidebar: React.FC = () => {
   
   const user = useSelector((state: RootState) => state.user);
   const [editUserOpen, setEditUserOpen] = useState(false);
   const [openSearchUser, setOpenSearchUser] = useState(false);
+  const[openGroup, setOpenGroup] = useState(false);
   const [students, setStudents] = useState<StudentData[]>([]);
   const [allUser, setAllUser] = useState<ConversationUser[]>([]);
 
@@ -56,38 +62,68 @@ const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
 
-  useEffect(()=>{
-    if(socketConnection){
-        socketConnection.emit('sidebar',user.mongoId)
-        
-        socketConnection.on('conversation',(data: ConversationUser[])=>{
-            console.log('conversation',data)
-            console.log('user.mongoId',user.mongoId)
-            const conversationUserData = data.map((conversationUser,index)=>{
-                if(conversationUser?.sender?._id === conversationUser?.receiver?._id){
-                    return{
-                        ...conversationUser,
-                        userDetails : conversationUser?.sender
-                    }
-                }
-                else if(conversationUser?.receiver?._id !== user?.mongoId){
-                    return{
-                        ...conversationUser,
-                        userDetails : conversationUser.receiver
-                    }
-                }else{
-                    return{
-                        ...conversationUser,
-                        userDetails : conversationUser.sender
+  useEffect(() => {
+    if (socketConnection) {
+        // Gửi yêu cầu sidebar để lấy danh sách trò chuyện cá nhân và nhóm
+        socketConnection.emit('sidebar', user.mongoId);
+
+        // Lắng nghe sự kiện conversation
+        socketConnection.on('conversation', (data: any[]) => {
+            console.log('conversation', data);
+            console.log('user.mongoId', user.mongoId);
+            
+            // Phân loại dữ liệu cá nhân và nhóm
+            const conversations = data.map((conversation) => {
+                if (conversation.isGroup) {
+                    // Xử lý dữ liệu nhóm
+                    console.log("Group conversation fullname:", conversation?.userDetails?.fullname);
+                    return {
+                        ...conversation,
+                        userDetails: {
+                            fullname: conversation?.userDetails?.fullname, // Tên nhóm
+                            profile_pic:conversation?.userDetails?.profile_pic|| '', // Biểu tượng nhóm mặc định
+                            isGroup: true,
+                        },
+                        
+                    };
+                } else {
+                    // Xử lý dữ liệu cá nhân
+                    if (conversation?.sender?._id === conversation?.receiver?._id) {
+                        return {
+                            ...conversation,
+                            userDetails: conversation?.sender,
+                        };
+                    } else if (conversation?.receiver?._id !== user?.mongoId) {
+                        return {
+                            ...conversation,
+                            userDetails: conversation.receiver,
+                        };
+                    } else {
+                        return {
+                            ...conversation,
+                            userDetails: conversation.sender,
+                        };
                     }
                 }
             })
-            .filter((conversationUser) => conversationUser.userDetails);
-            setAllUser(conversationUserData as ConversationUser[]);
+            .filter((conversation) => conversation.userDetails);
+
+            // Cập nhật danh sách vào state
+            setAllUser(conversations as ConversationUser[]);
         });
+        
     }
-},[socketConnection,user])
-  // Lấy thông tin người dùng từ Redux
+
+    // Cleanup: Gỡ bỏ lắng nghe sự kiện khi component unmount
+    return () => {
+        if (socketConnection) {
+            socketConnection.off('conversation');
+        }
+    };
+}, [socketConnection, user]);
+
+  
+  
   
   useEffect(() => {
     // Fetch dữ liệu sinh viên từ db.json
@@ -154,6 +190,13 @@ const Sidebar: React.FC = () => {
           >
             <FaUserPlus size={20} />
           </div>
+          <div
+            title="add group"
+            onClick={() => setOpenGroup(true)}
+            className="w-12 h-12 flex justify-center items-center cursor-pointer hover:bg-slate-200 rounded"
+          >
+            <FaPeopleGroup  size={20} />
+          </div>
         </div>
 
         {/* Avatar và thông tin người dùng đã đăng nhập */}
@@ -196,7 +239,7 @@ const Sidebar: React.FC = () => {
 
       {/* Message Section */}
       <div className="w-full">
-        <div className="h-16 flex items-center">
+        <div className="h-20 flex items-center">
           <h2 className="text-xl font-bold p-4 text-slate-800">Message</h2>
         </div>
         <div className="bg-slate-200 p-[0.5px]"></div>
@@ -215,8 +258,12 @@ const Sidebar: React.FC = () => {
                         allUser.map((conv,index)=>{
                           console.log('conv?.userDetails?.mongoId',conv?.userDetails?._id)
                           console.log('conv?.mongoId',conv?.id)
+                          const isGroup = conv?.userDetails?.isGroup; // Kiểm tra nếu là nhóm
+                          const conversationLink = isGroup
+                            ? `/message/${conv.id}/chat` // Đường dẫn tới nhóm
+                            : `/message/${conv?.userDetails?._id}/chat`;
                             return(
-                                <NavLink to={"/message/"+conv?.userDetails?._id+"/chat"} key={conv?.id} className='flex items-center gap-2 py-3 px-2 border border-transparent hover:border-primary rounded hover:bg-slate-100 cursor-pointer'>
+                                <NavLink to={conversationLink} key={conv?.id} className='flex items-center gap-2 py-3 px-2 border border-transparent hover:border-primary rounded hover:bg-slate-100 cursor-pointer'>
                                     <div>
                                         <Avatar
                                     imageUrl={conv?.userDetails?.profile_pic}
@@ -273,8 +320,13 @@ const Sidebar: React.FC = () => {
         students={students} 
         
         />
-        
       )}
+      {
+        openGroup && (
+          <CreateGroup onClose={() => setOpenGroup(false)} 
+           
+          
+          />)}
     </div>
   );
 };
