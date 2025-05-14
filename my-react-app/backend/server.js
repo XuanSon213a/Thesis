@@ -1,7 +1,8 @@
 import express from 'express';
 import mysql from 'mysql';
 import mongoose from 'mongoose';
-
+import cloudinary from 'cloudinary';
+import multer from 'multer';
 import bodyParser from 'body-parser';
 import cors from 'cors'; // Không cần gọi lại require cho cors
 import jwt from 'jsonwebtoken';
@@ -24,6 +25,7 @@ const { MessageModel, ConversationModel, GroupConversationModel } = models;
 
 import getConversation from './helpers/getConversation.js';
 import GroupModel from './Models/GroupModel.js';
+import AlumniProfile from './Models/ALumniProfile.js';
  const app = express(); // Chuyển app lên trên
 
 // Cấu hình CORS với tùy chọn chính xác
@@ -38,8 +40,11 @@ const port = 3300;
 const saltRounds = 10;
 
 // Parse JSON bodies (as sent by API clients)
-app.use(bodyParser.json());
-app.use(express.json()); 
+// Tăng giới hạn kích thước dữ liệu lên 50MB
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+
+
 app.use(cors({
   origin: ["http://localhost:3000"],
   methods:["POST","GET"],
@@ -57,7 +62,34 @@ const db = mysql.createConnection({
 });
 
 connectDB();
+cloudinary.config({
+  cloud_name: 'Untitled', // Thay bằng cloud name của bạn
+  api_key: '725124249234581', // Thay bằng API key của bạn
+  api_secret: 'XN3QU', // Thay bằng API secret của bạn
+});
+// Cấu hình multer để xử lý file upload
+const upload = multer({ storage: multer.memoryStorage() });
 
+// Endpoint để upload ảnh lên Cloudinary
+app.post('/upload-image', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).send('No file uploaded.');
+        }
+
+        // Upload ảnh lên Cloudinary
+        const result = await cloudinary.uploader.upload_stream({ resource_type: 'auto' }, (error, result) => {
+            if (error) {
+                console.error('Error uploading to Cloudinary:', error);
+                return res.status(500).send('Error uploading image');
+            }
+            res.json({ location: result.secure_url }); // Trả về URL của ảnh trên Cloudinary
+        }).end(req.file.buffer);
+    } catch (error) {
+        console.error('Error uploading image:', error);
+        res.status(500).send('Error uploading image');
+    }
+});
 const verifyUser = (req, res, next) => {
   const token = req.cookies.token|| req.headers.authorization?.split(' ')[1];
 
@@ -82,68 +114,202 @@ const verifyUser = (req, res, next) => {
     next();
   });
 };
-
+const verifyAdmin = (req, res, next) => {
+  if (req.role !== 'admin') {
+    return res.status(403).json({ Error: "Access denied. Admins only." });
+  }
+  next();
+};
 app.get('/page',verifyUser,(req, res) => {
   return res.json({Status:"Success",role: req.role});
 })
  // Load biến môi trường từ .env
 
- // Load biến môi trường từ .env
+ // Read the db.json file
+fs.readFile('./db.json', 'utf8', async (err, data) => {
+  if (err) {
+    console.error('Error reading db.json:', err.message);
+    return;
+  }
+
+  const alumniData = JSON.parse(data).failureData;
+
+  for (const alumni of alumniData) {
+    const email = `${alumni["Student ID"].toLowerCase()}@student.hcmiu.edu.vn`;
+    const password = await bcrypt.hash(alumni["Student ID"], saltRounds);
+
+    // Check if the email already exists in MySQL
+    const checkSql = 'SELECT id FROM login WHERE email = ?';
+    db.query(checkSql, [email], async (err, results) => {
+      if (err) {
+        console.error('Error checking email in MySQL:', err.message);
+        return;
+      }
+
+      if (results.length > 0) {
+        console.log(`Email ${email} already exists in MySQL. Skipping.`);
+        return;
+      }
+
+      // Save to MySQL
+      const sql = 'INSERT INTO login (fullname, email, password, role) VALUES (?, ?, ?, ?)';
+      db.query(sql, [alumni.Name, email, password, 'user'], async (err, result) => {
+        if (err) {
+          console.error('Error inserting into MySQL:', err.message);
+          return;
+        }
+
+      const mysqlId = result.insertId;
+
+      // Save to MongoDB
+      const mongoUser = new UserModel({
+        fullname: alumni.Name,
+        email: email,
+        password: password,
+        profile_pic: '',
+        mysql_id: mysqlId,
+      });
+
+      try {
+        await mongoUser.save();
+        console.log(`Account created for ${alumni.Name}`);
+      } catch (error) {
+        console.error('Error saving to MongoDB:', error.message);
+      }
+    });
+  });
+  }
+});
+
+
+
+
+// Function to read db.json and store data in MongoDB and MySQL
+const storeDataToDatabases = async () => {
+  fs.readFile('./db.json', 'utf8', async (err, data) => {
+    if (err) {
+      console.error('Error reading db.json:', err.message);
+      return;
+    }
+
+    const alumniData = JSON.parse(data).failureData;
+
+    for (const alumni of alumniData) {
+      const { "No.": id, "Student ID": studentId, Name: fullname, Class: className } = alumni;
+      const Name = fullname;
+      const Email = `${studentId.toLowerCase()}@student.hcmiu.edu.vn`;
+      const profilePic = '';
+      const degree = '';
+      const gpa = null;
+      const currentJob = '';
+      const employer = '';
+      const position = '';
+      const location = '';
+      const experience = '';
+      const skills = '';
+      const interests = '';
+      const contact = '';
+
+      // Save to MySQL
+      const sql = 'INSERT INTO alumni (id, student_id, fullname, class, email, profile_pic, degree, gpa, current_job, employer, position, location, experience, skills, interests, contact) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+      db.query(sql, [id, studentId, fullname, className, Email, profilePic, degree, gpa, currentJob, employer, position, location, experience, skills, interests, contact], async (err, result) => {
+        if (err) {
+          console.error('Error inserting into MySQL:', err.message);
+          return;
+        }
+
+        const mysqlId = result.insertId;
+
+        // Save to MongoDB
+        const mongoUser = new AlumniProfile({
+          id,
+          studentId,
+          Name, // Ensure fullname is used here
+          className,
+          Email,
+          profilePic,
+          degree,
+          gpa,
+          currentJob,
+          employer,
+          position,
+          location,
+          experience,
+          skills,
+          interests,
+          contact,
+          mysql_id: mysqlId, // Store the MySQL ID to relate MongoDB data with MySQL
+        });
+
+        try {
+          await mongoUser.save();
+          console.log(`Account created for ${fullname}`);
+        } catch (error) {
+          console.error('Error saving to MongoDB:', error.message);
+        }
+      });
+    }
+  });
+};
+
+// Call the function to store data
+storeDataToDatabases();
 
  // Lấy chuỗi bí mật từ biến môi trường
 const query = util.promisify(db.query).bind(db);
 app.post('/register', async (req, res) => {
   const { fullname, email, password } = req.body;
 
-  // Validate user inputs
   if (!fullname || !email || !password) {
     return res.status(400).json({ Error: "All fields are required" });
   }
 
   try {
-    // Hash the password
+    // Hash password
     const hash = await bcrypt.hash(password, saltRounds);
+    console.log("Password hashed successfully");
 
-    // Save the user in MySQL
+    // Save to MySQL
     const sql = "INSERT INTO login (`fullname`, `email`, `password`, `role`) VALUES (?, ?, ?, ?)";
     const values = [fullname, email, hash, 'user'];
+    console.log("Executing MySQL query:", sql, values);
 
-    // Execute the MySQL query
     const results = await query(sql, values);
-    const userId = results.insertId; // ID of the newly registered user in MySQL
+    console.log("MySQL insert results:", results);
 
-    // Create a JWT token
-    const tokenPayload = { id: userId.toString(), email }; // Use `userId` and `email` from inputs
-    const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: '1d' });
+    if (!results || !results.insertId) {
+      throw new Error("MySQL insert failed - no insertId returned");
+    }
 
-    // Save user in MongoDB (without the password)
+    const userId = results.insertId;
+    console.log("New MySQL user ID:", userId);
+
+    // Create JWT
+    const token = jwt.sign({ id: userId.toString(), email }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    // Save to MongoDB
     const mongoUser = new UserModel({
       fullname,
       email,
-      password: hash, // Store the hashed password
-      profile_pic: "", // Default profile picture in MongoDB
-      mysql_id: userId, // Store the MySQL ID to relate MongoDB data with MySQL
+      password: hash,
+      profile_pic: "",
+      mysql_id: userId,
     });
 
-    // Save user in MongoDB and get mongoId
     const savedMongoUser = await mongoUser.save();
+    console.log("MongoDB user saved:", savedMongoUser._id);
 
-    // Get mongoId from MongoDB user
-    const mongoId = savedMongoUser._id.toString(); // Ensure mongoId is a string
-
-    // Return success response
     return res.status(201).json({
-      Status: "User registered successfully",
-      token: token,
-      user: { id: mongoId, fullname, email }, // Use mongoId in the response
+      Status: "Success",
+      token,
+      user: { id: savedMongoUser._id, fullname, email },
     });
 
   } catch (error) {
     console.error("Registration error:", error);
-    return res.status(500).json({ Error: "Server error during registration." });
+    return res.status(500).json({ Error: error.message || "Server error during registration." });
   }
 });
-
 
 
 
@@ -177,7 +343,7 @@ app.post('/login', async (req, res) => {
               const token = jwt.sign(
                 { id: mongoId,mongoId: mongoId.toString(), fullname, email, role, profile_pic },  // Dùng mongoId thay cho mysqlId
                 process.env.JWT_SECRET,
-                { expiresIn: '1d' }
+                { expiresIn: '7d' }
               );
               // Trả về cả MySQL ID và MongoDB ID cùng với thông tin khác
               res.cookie('token', token);
@@ -264,11 +430,15 @@ const uploadOpts = {
   tempFileDir: '/tmp/'
 }
 import XLSX from 'xlsx';
-app.post('/api/upload', fileUpload(uploadOpts), (req, res) => {
+app.post('/api/upload', fileUpload(uploadOpts), async (req, res) => {
   try {
     const { excel } = req.files;
     if (excel.mimetype !== 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
-      fs.unlinkSync(excel.tempFilePath);
+      try {
+        fs.unlinkSync(excel.tempFilePath);
+      } catch (err) {
+        console.error('Error deleting invalid file:', err);
+      }
       return res.status(400).json({ msg: 'File is invalid' });
     }
 
@@ -276,51 +446,263 @@ app.post('/api/upload', fileUpload(uploadOpts), (req, res) => {
     const sheetName = workbook.SheetNames[0];
     const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
-    // Initialize successData and failureData arrays
     const successData = [];
     const failureData = [];
 
-    // Process all rows asynchronously
-    const promises = data.map((row, index) => {
-      const { Number, StudentID, Name, Class } = row;
-      const sql = 'INSERT INTO students (Number, StudentID, Name, Class) VALUES (?, ?, ?, ?)';
+    const promises = data.map(async (row) => {
+      const {
+        'No.': id,
+        'Student ID': studentId,
+        'Name': name,
+        'Class': className,
+      } = row;
 
-      return new Promise((resolve, reject) => {
-        db.query(sql, [Number, StudentID, Name, Class], (err, result) => {
-          if (err) {
-            failureData.push(row); // Push to failureData if error
-            reject(err);
-          } else {
-            successData.push(row); // Push to successData if successful
-            resolve(result);
-          }
+      const email = row['Email'] || '';
+      const profilePic = row['Profile Pic'] || '';
+      const degree = row['Degree'] || '';
+      const gpa = row['GPA'] || '';
+      const currentJob = row['Current Job'] || '';
+      const employer = row['Employer'] || '';
+      const position = row['Position'] || '';
+      const location = row['Location'] || '';
+      const experience = row['Experience'] || '';
+      const skills = row['Skills'] || '';
+      const interests = row['Interests'] || '';
+      const contact = row['Contact'] || '';
+
+      const sql = 'INSERT INTO alumni (id, student_id, fullname, class, email, profile_pic, degree, gpa, current_job, employer, position, location, experience, skills, interests, contact) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+
+      try {
+        await new Promise((resolve, reject) => {
+          db.query(sql, [no, studentId, name, className, email, profilePic, degree, gpa, currentJob, employer, position, location, experience, skills, interests, contact], (err, result) => {
+            if (err) {
+              console.error('Error inserting into MySQL:', err);
+              reject(err);
+            } else {
+              resolve(result);
+            }
+          });
         });
-      });
+
+        const mongoUser = new AlumniProfile({
+          id,
+          studentId,
+          name,
+          className,
+          email,
+          profilePic,
+          degree,
+          gpa,
+          currentJob,
+          employer,
+          position,
+          location,
+          experience,
+          skills,
+          interests,
+          contact,
+        });
+
+        await mongoUser.save();
+
+        successData.push(row);
+      } catch (error) {
+        failureData.push(row);
+        console.error('Error processing row:', error);
+      }
     });
 
-    // Wait for all database operations to finish
-    Promise.allSettled(promises).then(() => {
-      fs.unlinkSync(excel.tempFilePath); // Delete temp file after processing
+    await Promise.allSettled(promises);
 
-      const responseData = { successData, failureData };
+    try {
+      fs.unlinkSync(excel.tempFilePath);
+    } catch (err) {
+      console.error('Error deleting temporary file:', err);
+    }
+
+    const responseData = { successData, failureData };
+    try {
       fs.writeFile('db.json', JSON.stringify(responseData, null, 2), (err) => {
         if (err) {
+          console.error('Error writing to db.json:', err);
           return res.status(500).json({ error: 'Error writing to file' });
         }
 
         return res.json({ msg: 'DONE', data: responseData });
       });
-    }).catch(error => {
-      console.error(error);
-      return res.status(500).json({ msg: 'Server error during database operations' });
-    });
+    } catch (err) {
+      console.error('Error writing to file:', err);
+      return res.status(500).json({ error: 'Error writing to file' });
+    }
 
   } catch (error) {
-    console.log(error);
+    console.error('Server error:', error);
     return res.status(500).json({ msg: 'Server error' });
   }
 });
 
+
+// API endpoint to fetch total alumni count
+app.get('/api/alumni/count', async (req, res) => {
+  try {
+    const count = await UserModel.countDocuments();
+    return res.status(200).json({ count });
+  } catch (error) {
+    console.error("Error fetching alumni count:", error.message);
+    return res.status(500).json({ Error: "Server error" });
+  }
+});
+
+// API endpoint to fetch total online users count
+app.get('/api/online-users/count', async (req, res) => {
+  try {
+    const count = onlineUser.size;
+    return res.status(200).json({ count });
+  } catch (error) {
+    console.error("Error fetching online users count:", error.message);
+    return res.status(500).json({ Error: "Server error" });
+  }
+});
+// API endpoint to fetch alumni data grouped by school year
+app.get('/api/alumni/group-by-year', async (req, res) => {
+  try {
+    const alumniData = await UserModel.aggregate([
+      {
+        $project: {
+          year: {
+            $switch: {
+              branches: [
+                { case: { $regexMatch: { input: "$email", regex: /ititiu12/ } }, then: "12" },
+                { case: { $regexMatch: { input: "$email", regex: /ititiu11/ } }, then: "11" },
+                { case: { $regexMatch: { input: "$email", regex: /ititiu10/ } }, then: "10" },
+                { case: { $regexMatch: { input: "$email", regex: /ititiu09/ } }, then: "09" },
+                
+              ],
+              default: "Unknown"
+            }
+          }
+        }
+      },
+      {
+        $group: {
+          _id: "$year",
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { _id: 1 } // Sort by year
+      }
+    ]);
+
+    return res.status(200).json({ data: alumniData });
+  } catch (error) {
+    console.error("Error fetching alumni data grouped by year:", error.message);
+    return res.status(500).json({ Error: "Server error" });
+  }
+});
+// Get participation counts for all events
+// Get participation counts for all events
+app.get('/api/events/participation', (req, res) => {
+  const sql = `
+    SELECT 
+      e.id AS eventId,
+      e.title AS eventTitle,
+      SUM(CASE WHEN v.vote = 'yes' THEN 1 ELSE 0 END) AS participants,
+      SUM(CASE WHEN v.vote = 'no' THEN 1 ELSE 0 END) AS nonParticipants
+    FROM events e
+    LEFT JOIN votes v ON e.id = v.event_id
+    GROUP BY e.id, e.title
+    ORDER BY e.id;
+  `;
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error('Error fetching participation data:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    res.status(200).json(results);
+  });
+});
+// Get participation counts for all events
+app.get('/api/news/participation', (req, res) => {
+  const sql = `
+    SELECT 
+      n.id AS newsId,
+      n.title AS newsTitle,
+      SUM(CASE WHEN v.vote = 'yes' THEN 1 ELSE 0 END) AS participants,
+      SUM(CASE WHEN v.vote = 'no' THEN 1 ELSE 0 END) AS nonParticipants
+    FROM news n
+    LEFT JOIN newsvotes v ON n.id = v.news_id
+    GROUP BY n.id, n.title
+    ORDER BY n.id;
+  `;
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error('Error fetching participation data:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    res.status(200).json(results);
+  });
+});
+
+app.get('/api/org/participation', (req, res) => {
+  const sql = `
+    SELECT 
+      o.id AS orgId,
+      o.title AS orgTitle,
+      SUM(CASE WHEN v.vote = 'yes' THEN 1 ELSE 0 END) AS participants,
+      SUM(CASE WHEN v.vote = 'no' THEN 1 ELSE 0 END) AS nonParticipants
+    FROM organisation o
+    LEFT JOIN orgvotes v ON o.id = v.org_id
+    GROUP BY o.id, o.title
+    ORDER BY o.id;
+  `;
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error('Error fetching participation data:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    res.status(200).json(results);
+  });
+});
+// filepath: /c:/Users/Admin/Desktop/TTS-TVT/my-react-app/backend/server.js
+app.get('/api/alumni/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Fetch data from MySQL
+    const sql = 'SELECT * FROM alumni WHERE id = ?';
+    db.query(sql, [id], async (err, result) => {
+      if (err) {
+        console.error('Error fetching from MySQL:', err.message);
+        return res.status(500).json({ error: 'Server error' });
+      }
+
+      if (result.length === 0) {
+        return res.status(404).json({ error: 'Alumni not found' });
+      }
+      console.error('id:', id);
+      const alumni = result[0];
+
+      // Fetch data from MongoDB
+      const mongoAlumni = await AlumniProfile.findOne({ id });
+
+      if (!mongoAlumni) {
+        return res.status(404).json({ error: 'Alumni not found in MongoDB' });
+      }
+
+      // Combine data from MySQL and MongoDB
+      const combinedAlumni = {
+        ...alumni,
+        ...mongoAlumni._doc,
+      };
+
+      res.status(200).json(combinedAlumni);
+    });
+  } catch (error) {
+    console.error('Error fetching alumni data:', error.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 const server = http.createServer(app);
 
@@ -335,6 +717,7 @@ const io = new Server(server, {
 
 // Socket connection
 app.use(cors(corsOptions));
+const unseenNotifications = {};
 
 //online user
 const onlineUser = new Set()
@@ -343,11 +726,43 @@ io.on('connection', async (socket) => {
  
   console.log("Connect User:", socket.id);
 
-  const token = socket.handshake.auth.token;
-  //current user details
- 
-  const user = jwt.verify(token, process.env.JWT_SECRET);
-  
+  const token = socket.handshake.auth?.token; // Safely access the token
+
+  if (!token) {
+    console.error("No token provided by the client.");
+    socket.emit('error', "Authentication token is required.");
+    return; // Stop further execution
+  }
+   
+    // Verify the token
+    const user = jwt.verify(token, process.env.JWT_SECRET)
+  if (user) {
+    // Initialize unseen notifications for the user
+    if (!unseenNotifications[user.id]) {
+      unseenNotifications[user.id] = 0;
+    }
+
+    // Send unseen notifications count to the user
+    socket.emit('unseenNotifications', unseenNotifications[user.id]);
+
+    // Listen for new events
+    socket.on('newEvent', (event) => {
+      // Increment unseen notifications for all users except the sender
+      for (const userId in unseenNotifications) {
+        if (userId !== user.id) {
+          unseenNotifications[userId]++;
+        }
+      }
+
+      // Broadcast the new event to all users
+      io.emit('newEvent', event);
+    });
+
+    // Reset unseen notifications when the user views them
+    socket.on('viewNotifications', () => {
+      unseenNotifications[user.id] = 0;
+    });
+  }
   if (!user) {
     console.log("User not found with the given token");
     return; // Nếu không tìm thấy người dùng, dừng lại
@@ -802,14 +1217,404 @@ socket.on('join-group', (groupId) => {
 //     io.to(user?.mongoId?.toString()).emit('conversation',conversationSender)
 //     io.to(msgByUserId).emit('conversation',conversationReceiver)
 // })
+  // Create Event
+app.post('/api/events', (req, res) => {
+  const { picture, title, time,descr, location,author, tags } = req.body;
+  const sql = 'INSERT INTO events (picture, title, time, descr, location, author, tags) VALUES (?, ?, ?, ?, ?, ?, ?)';
+  db.query(sql, [picture, title, time,descr, location,author, tags], (err, result) => {
+      if (err) throw err;
+
+      // Emit the news notification to relevant users
+    if (tags.includes('#All')) {
+      io.emit('recentEvents', { picture, title, time, descr, location, author, tags });
+    } else {
+      const tagRegex = new RegExp(tags.replace(/#/g, ''), 'i'); // Remove '#' and create regex
+      UserModel.find({ email: { $regex: tagRegex } }).then(users => {
+        users.forEach(user => {
+          io.to(user._id.toString()).emit('recentEvents', { picture, title, time, descr, location, author, tags });
+        });
+      });
+    }
+      res.send('Event created...');
+  });
+});
+// Get Latest 4 Events
+app.get('/api/events', (req, res) => {
+  const sql = 'SELECT * FROM events ORDER BY created_at DESC LIMIT 3';
+  db.query(sql, (err, results) => {
+      if (err) throw err;
+      res.json(results);
+  });
+});
+
+// Get All Events
+app.get('/api/events/all', (req, res) => {
+  const sql = 'SELECT * FROM events ORDER BY created_at DESC';
+  db.query(sql, (err, results) => {
+      if (err) throw err;
+      res.json(results);
+  });
+});
+// Get Latest 5 Events
+app.get('/api/events/recent', verifyUser, (req, res) => {
+  const userEmail = req.user.email.toLowerCase(); // Normalize the user's email to lowercase
+  const sql = 'SELECT * FROM events ORDER BY created_at DESC LIMIT 5';
+
+  db.query(sql, (err, results) => {
+    if (err) throw err;
+
+    // Extract the first two words of the email
+    const emailPrefix = userEmail.split('@')[0].split('.').slice(0, 2).join(' ');
+
+    // Filter events based on tags
+    const filteredEvents = results.filter(event => {
+      const tags = event.tags || '';
+      return (
+        tags.toLowerCase().includes('#all') || // Show to all users if #All is present (case-insensitive)
+        tags
+          .toLowerCase()
+          .split(',')
+          .some(tag => emailPrefix.includes(tag.replace(/#/g, '').trim())) // Match email prefix with tags
+      );
+    });
+
+    res.json(filteredEvents);
+  });
+});
+app.get('/api/events/:id', (req, res) => {
+  const { id } = req.params;
+  const sql = 'SELECT * FROM events WHERE id = ?';
+  db.query(sql, [id], (err, result) => {
+      if (err) throw err;
+      res.json(result[0]);
+  });
+});
+// Get comments for an event
+app.get('/api/events/:id/comments', (req, res) => {
+  const { id } = req.params;
+  const sql = 'SELECT * FROM comments WHERE event_id = ? ORDER BY created_at DESC';
+  db.query(sql, [id], (err, results) => {
+      if (err) throw err;
+      res.json(results);
+  });
+});
+
+// Add a comment to an event
+app.post('/api/events/:id/comments', (req, res) => {
+  const { id } = req.params;
+  const { comment } = req.body;
+  const sql = 'INSERT INTO comments (event_id, comment, created_at) VALUES (?, ?, NOW())';
+  db.query(sql, [id, comment], (err, result) => {
+      if (err) throw err;
+      res.json({ id: result.insertId, event_id: id, comment, created_at: new Date() });
+  });
+});
+// // Create New
+// app.post('/api/news', (req, res) => {
+//   const { picture, title, time,descr, location,categogies, tags,author } = req.body;
+//   const sql = 'INSERT INTO news (picture, title, time, descr, location, categogies, tags, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+//   db.query(sql, [picture, title, time,descr, location,categogies, tags,author], (err, result) => {
+//       if (err) throw err;
+
+//       io.emit('newNew', { picture, title, time, descr, location,categogies, tags, author });
+
+//       res.send('News created...');
+//   });
+// });
+// // Get Latest 4 News
+// app.get('/api/news', (req, res) => {
+//   const sql = 'SELECT * FROM news ORDER BY created_at DESC LIMIT 3';
+//   db.query(sql, (err, results) => {
+//       if (err) throw err;
+//       res.json(results);
+//   });
+// });
+
+// // Get All Events
+// app.get('/api/news/all', (req, res) => {
+//   const sql = 'SELECT * FROM news ORDER BY created_at DESC';
+//   db.query(sql, (err, results) => {
+//       if (err) throw err;
+//       res.json(results);
+//   });
+// });
+// // Get Latest 5 Events
+// app.get('/api/news/recent', (req, res) => {
+//   const sql = 'SELECT * FROM news ORDER BY created_at DESC LIMIT 5';
+//   db.query(sql, (err, results) => {
+//       if (err) throw err;
+//       res.json(results);
+//   });
+// });
+// Create New
+app.post('/api/news', (req, res) => {
+  const { picture, title, time, descr, location, categories, tags, author } = req.body;
+  const sql = 'INSERT INTO news (picture, title, time, descr, location, categories, tags, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
   
-    // Xử lý sự kiện disconnect
+  db.query(sql, [picture, title, time, descr, location, categories, tags, author], (err, result) => {
+    if (err) throw err;
+
+    // Emit the news notification to relevant users
+    io.emit('newNews', { picture, title, time, descr, location, categories, tags, author });
+
+    // Emit the news notification to relevant users
+    if (tags.includes('#All')) {
+      io.emit('recentNews', { picture, title, time, descr, location, categories, tags });
+    } else {
+      const tagRegex = new RegExp(tags.replace(/#/g, ''), 'i'); // Remove '#' and create regex
+      UserModel.find({ email: { $regex: tagRegex } }).then(users => {
+        users.forEach(user => {
+          io.to(user._id.toString()).emit('recentNews', { picture, title, time, descr, location, categories, tags });
+        });
+      });
+    }
+
+    res.send('News created...');
+  });
+});
+// Get Latest 4 News
+app.get('/api/news', (req, res) => {
+  const sql = 'SELECT * FROM news ORDER BY created_at DESC LIMIT 3';
+  db.query(sql, (err, results) => {
+      if (err) throw err;
+      res.json(results);
+  });
+});
+
+// Get All Events
+app.get('/api/news/all', (req, res) => {
+  const sql = 'SELECT * FROM news ORDER BY created_at DESC';
+  db.query(sql, (err, results) => {
+      if (err) throw err;
+      res.json(results);
+  });
+});
+// Get Latest 5 Events
+app.get('/api/news/recent', verifyUser, (req, res) => {
+  const userEmail = req.user.email.toLowerCase(); // Normalize the user's email to lowercase
+  const sql = 'SELECT * FROM news ORDER BY created_at DESC LIMIT 5';
+
+  db.query(sql, (err, results) => {
+    if (err) throw err;
+
+    // Extract the first two words of the email
+    const emailPrefix = userEmail.split('@')[0].split('.').slice(0, 2).join(' ');
+
+    // Filter news based on tags
+    const filteredNews = results.filter(news => {
+      const tags = news.tags || '';
+      return (
+        tags.toLowerCase().includes('#all') || // Show to all users if #All is present (case-insensitive)
+        tags
+          .toLowerCase()
+          .split(',')
+          .some(tag => emailPrefix.includes(tag.replace(/#/g, '').trim())) // Match email prefix with tags
+      );
+    });
+
+    res.json(filteredNews);
+  });
+});
+app.get('/api/news/:id', (req, res) => {
+  const { id } = req.params;
+  const sql = 'SELECT * FROM news WHERE id = ?';
+  db.query(sql, [id], (err, result) => {
+      if (err) throw err;
+      res.json(result[0]);
+  });
+});
+// Get comments for an event
+app.get('/api/news/:id/comments', (req, res) => {
+  const { id } = req.params;
+  const sql = 'SELECT * FROM comments WHERE news_id = ? ORDER BY created_at DESC';
+  db.query(sql, [id], (err, results) => {
+      if (err) throw err;
+      res.json(results);
+  });
+});
+
+// Add a comment to an event
+app.post('/api/news/:id/comments', (req, res) => {
+  const { id } = req.params;
+  const { comment } = req.body;
+  const sql = 'INSERT INTO comments (news_id, comment, created_at) VALUES (?, ?, NOW())';
+  db.query(sql, [id, comment], (err, result) => {
+      if (err) throw err;
+      res.json({ id: result.insertId, news_id: id,event_id:id, comment, created_at: new Date() });
+  });
+});
+//////// Create Organisation
+app.post('/api/org', (req, res) => {
+  const { picture, title, time,linkweb,industry ,descr, location,categories, tags,contacter,position } = req.body;
+  const sql = 'INSERT INTO organisation (picture, title, time,linkweb,industry ,descr, location,categories, tags,contacter,position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+  db.query(sql, [picture, title, time,linkweb,industry ,descr, location,categories, tags,contacter,position], (err, result) => {
+      if (err) throw err;
+
+      io.emit('newOrg', { picture, title, time,linkweb,industry ,descr, location,categories, tags,contacter,position });
+
+      res.send('Organisation created...');
+  });
+});
+// Get Latest 4 Organisation
+app.get('/api/org', (req, res) => {
+  const sql = 'SELECT * FROM organisation ORDER BY created_at DESC LIMIT 3';
+  db.query(sql, (err, results) => {
+      if (err) throw err;
+      res.json(results);
+  });
+});
+
+// Get All Events
+app.get('/api/org/all', (req, res) => {
+  const sql = 'SELECT * FROM organisation ORDER BY created_at DESC';
+  db.query(sql, (err, results) => {
+      if (err) throw err;
+      res.json(results);
+  });
+});
+// Get Latest 5 Events
+app.get('/api/org/recent', (req, res) => {
+  const sql = 'SELECT * FROM organisation ORDER BY created_at DESC LIMIT 5';
+  db.query(sql, (err, results) => {
+      if (err) throw err;
+      res.json(results);
+  });
+});
+app.get('/api/org/:id', (req, res) => {
+  const { id } = req.params;
+  const sql = 'SELECT * FROM organisation WHERE id = ?';
+  db.query(sql, [id], (err, result) => {
+      if (err) throw err;
+      res.json(result[0]);
+  });
+});
+// Get comments for an event
+app.get('/api/org/:id/comments', (req, res) => {
+  const { id } = req.params;
+  const sql = 'SELECT * FROM comments WHERE org_id = ? ORDER BY created_at DESC';
+  db.query(sql, [id], (err, results) => {
+      if (err) throw err;
+      res.json(results);
+  });
+});
+
+// Add a comment to an event
+app.post('/api/org/:id/comments', (req, res) => {o
+  const { id } = req.params;
+  const { comment } = req.body;
+  const sql = 'INSERT INTO comments (org_id, comment, created_at) VALUES (?, ?, NOW())';
+  db.query(sql, [id, comment], (err, result) => {
+      if (err) throw err;
+      res.json({ id: result.insertId,org_id:id ,news_id: id,event_id:id, comment, created_at: new Date() });
+  });
+});
+    // Xử lý sự kiện disconnect    
     socket.on('disconnect', () => {
       onlineUser.delete(user?.mongoId)
       console.log("Disconnect user", socket.id);
     });
 
 });
+// Import the AlumniProfile model
+app.get('/api/alumni', async (req, res) => {
+  try {
+    const alumniData = await AlumniProfile.find(); // Fetch all alumni data from MongoDB
+    res.status(200).json(alumniData);
+  } catch (error) {
+    console.error('Error fetching alumni data:', error.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+app.put('/api/profile/:id',verifyUser, verifyAdmin, async (req, res) => {
+  const { id } = req.params;
+  const {
+    studentId,
+    fullname,
+    className,
+    email,
+    profilePic,
+    degree,
+    gpa,
+    current_job,
+    employer,
+    position,
+    location,
+    experience,
+    skills,
+    interests,
+    contact
+  } = req.body;
+
+  // Log the received data
+  console.log("Received data:", req.body);
+
+  // Validate the input
+  if (!fullname || !email) {
+    return res.status(400).json({ Error: "Fullname and email are required" });
+  }
+
+  try {
+    // Update existing profile in MySQL
+    const sql = 'UPDATE alumni SET student_id = ?, fullname = ?, class = ?, email = ?, profile_pic = ?, degree = ?, gpa = ?, current_job = ?, employer = ?, position = ?, location = ?, experience = ?, skills = ?, interests = ?, contact = ? WHERE id = ?';
+    const values = [studentId, fullname, className, email, profilePic, degree, gpa, current_job, employer, position, location, experience, skills, interests, contact, id];
+    await query(sql, values);
+
+    // Update existing profile in MongoDB
+    const updateResult = await AlumniProfile.findOneAndUpdate({ id }, {
+      studentId,
+      Name: fullname,
+      className,
+      Email: email,
+      profilePic,
+      degree,
+      gpa,
+      currentJob:current_job,
+      employer,
+      position,
+      location,
+      experience,
+      skills,
+      interests,
+      contact
+    }, { new: true });
+
+    if (!updateResult) {
+      console.error("Error updating profile in MongoDB: Profile not found");
+      return res.status(404).json({ Error: "Profile not found in MongoDB" });
+    }
+
+    console.log("Profile updated successfully in MongoDB:", updateResult);
+
+    return res.status(200).json({ Status: "Profile updated successfully" });
+  } catch (error) {
+    console.error("Error updating profile:", error.message);
+    return res.status(500).json({ Error: "Server error" });
+  }
+});
+app.delete('/api/profile/:id',verifyUser, verifyAdmin, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Delete from MySQL
+    const sql = 'DELETE FROM alumni WHERE id = ?';
+    await query(sql, [id]);
+
+    // Delete from MongoDB
+    const deleteResult = await AlumniProfile.findOneAndDelete({ id });
+
+    if (!deleteResult) {
+      return res.status(404).json({ error: 'Profile not found in MongoDB' });
+    }
+
+    console.log('Profile deleted successfully:', deleteResult);
+    return res.status(200).json({ message: 'Profile deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting profile:', error.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
 app.get('/user-details', verifyUser, async (req, res) => {
   try {
     const mongoId = req.mongoId;
@@ -830,7 +1635,7 @@ app.get('/user-details', verifyUser, async (req, res) => {
   }
 });
 
-app.post('/update-user', verifyUser, (req, res) => {
+app.post('/update-user', verifyUser, async (req, res) => {
   const { fullname, profile_pic } = req.body;
 
   // Kiểm tra dữ liệu
@@ -838,28 +1643,66 @@ app.post('/update-user', verifyUser, (req, res) => {
     return res.status(400).json({ Error: "Fullname is required" });
   }
 
-  const userId = req._id; // Hoặc req.id từ middleware
-  
-  const sql = 'UPDATE login SET fullname = ?, profile_pic = ? WHERE id = ?';
-  db.query(sql, [fullname, profile_pic || '', userId], (err, result) => {
-    if (err) {
-      return res.status(500).json({ Error: "Database update error" });
+  const mongoId = req.mongoId; // Lấy mongoId từ middleware
+
+  try {
+    // Tìm user trong MongoDB để lấy mysql_id
+    const mongoUser = await UserModel.findById(mongoId);
+    if (!mongoUser) {
+      console.error('User not found in MongoDB:', mongoId);
+      return res.status(404).json({ Error: "User not found in MongoDB" });
     }
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ Error: "User not found" });
+    const mysqlId = mongoUser.mysql_id; // Lấy mysql_id từ MongoDB user
+
+    // Ensure mysqlId is a number
+    if (typeof mysqlId !== 'number') {
+      console.error('Invalid MySQL ID:', mysqlId);
+      return res.status(400).json({ Error: "Invalid MySQL ID" });
     }
 
-    return res.json({
-      Status: "Success",
-      Message: "User details updated successfully",
-      user: {
-        _id: userId,
-        fullname: fullname,
-        profile_pic: profile_pic || '',
-      },
+    const sql = 'UPDATE login SET fullname = ?, profile_pic = ? WHERE id = ?';
+    db.query(sql, [fullname, profile_pic || '', mysqlId], async (err, result) => {
+      if (err) {
+        console.error('Database update error:', err);
+        return res.status(500).json({ Error: "Database update error" });
+      }
+
+      if (result.affectedRows === 0) {
+        console.warn('User not found for ID:', mysqlId);
+        return res.status(404).json({ Error: "User not found" });
+      }
+
+      try {
+        // Cập nhật thông tin user trong MongoDB
+        const updatedUser = await UserModel.findByIdAndUpdate(
+          mongoId,
+          { 
+            fullname: fullname,
+            profile_pic: profile_pic || '' 
+          },
+          { new: true } // Trả về document đã được cập nhật
+        );
+
+        console.log('User details updated successfully for ID:', mysqlId);
+        return res.json({
+          Status: "Success",
+          Message: "User details updated successfully",
+          user: {
+            _id: mongoId,
+            fullname: updatedUser.fullname,
+            profile_pic: updatedUser.profile_pic || '',
+          },
+        });
+      } catch (mongoError) {
+        console.error('Error updating MongoDB:', mongoError);
+        return res.status(500).json({ Error: "Failed to update MongoDB" });
+      }
     });
-  });
+  } catch (error) {
+    console.error('Error updating user details:', error);
+    return res.status(500).json({ Error: "Server error" });
+  }
 });
 
 //search user
@@ -886,6 +1729,533 @@ app.post('/search-user', async (req, res) => {
   }
 });
 
+app.get('/api/users/mysql', async (req, res) => {
+  const sql = 'SELECT id, fullname, email, role FROM login';
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error('Error fetching users from MySQL:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    res.status(200).json(results);
+  });
+});
+app.get('/api/users/mongo', async (req, res) => {
+  try {
+    const users = await UserModel.find({}, 'fullname email role').lean();
+    res.status(200).json(users);
+  } catch (err) {
+    console.error('Error fetching users from MongoDB:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+app.put('/api/users/:id/role', async (req, res) => {
+  const { id } = req.params;
+  const { role } = req.body;
+
+  if (!role) {
+    return res.status(400).json({ error: 'Role is required' });
+  }
+
+  const sql = 'UPDATE login SET role = ? WHERE id = ?';
+  db.query(sql, [role, id], (err, result) => {
+    if (err) {
+      console.error('Error updating user role:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.status(200).json({ message: 'User role updated successfully' });
+  });
+});
+app.delete('/api/users/:id', (req, res) => {
+  const { id } = req.params;
+  const sql = 'DELETE FROM login WHERE id = ?';
+  db.query(sql, [id], (err, result) => {
+    if (err) {
+      console.error('Error deleting user:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.status(200).json({ message: 'User deleted successfully' });
+  });
+});
+app.delete('/api/users/mongo/:id', async (req, res) => {
+  const { id } = req.params; // MongoDB user ID
+  try {
+    const result = await UserModel.findByIdAndDelete(id); // Delete user by MongoDB ID
+    if (!result) {
+      return res.status(404).json({ error: 'User not found in MongoDB' });
+    }
+    res.status(200).json({ message: 'MongoDB user deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting MongoDB user:', err.message);
+    res.status(500).json({ error: 'Server error while deleting MongoDB user' });
+  }
+});
+app.get('/api/news/related', (req, res) => {
+  const { category, tags } = req.query;
+
+  if (!category || !tags) {
+    return res.status(400).json({ error: 'Category and tags are required' });
+  }
+
+  const sql = `
+    SELECT * FROM news
+    WHERE categories = ? OR tags LIKE ?
+    ORDER BY created_at DESC
+    LIMIT 5
+  `;
+
+  db.query(sql, [category, `%${tags}%`], (err, results) => {
+    if (err) {
+      console.error('Error fetching related news:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+
+    res.status(200).json(results);
+  });
+});
+// Get all outstanding individuals
+app.get('/api/individuals', (req, res) => {
+  const sql = 'SELECT * FROM individuals';
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error('Error fetching individuals:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    res.status(200).json(results);
+  });
+});
+
+// Get a single individual by ID
+app.get('/api/individuals/:id', (req, res) => {
+  const { id } = req.params;
+  const sql = 'SELECT * FROM individuals WHERE id = ?';
+  db.query(sql, [id], (err, result) => {
+    if (err) {
+      console.error('Error fetching individual:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Individual not found' });
+    }
+    res.status(200).json(result[0]);
+  });
+});
+
+// Add a new individual
+app.post('/api/individuals', (req, res) => {
+  const { name, role, description, image } = req.body;
+  if (!name || !role || !description || !image) {
+    return res.status(400).json({ error: 'All fields are required' });
+  }
+  const sql = 'INSERT INTO individuals (name, role, description, image) VALUES (?, ?, ?, ?)';
+  db.query(sql, [name, role, description, image], (err, result) => {
+    if (err) {
+      console.error('Error adding individual:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    res.status(201).json({ id: result.insertId, name, role, description, image });
+  });
+});
+
+// Update an individual
+app.put('/api/individuals/:id', (req, res) => {
+  const { id } = req.params;
+  const { name, role, description, image } = req.body;
+  if (!name || !role || !description || !image) {
+    return res.status(400).json({ error: 'All fields are required' });
+  }
+  const sql = 'UPDATE individuals SET name = ?, role = ?, description = ?, image = ? WHERE id = ?';
+  db.query(sql, [name, role, description, image, id], (err, result) => {
+    if (err) {
+      console.error('Error updating individual:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Individual not found' });
+    }
+    res.status(200).json({ id, name, role, description, image });
+  });
+});
+
+// Delete an individual
+app.delete('/api/individuals/:id', (req, res) => {
+  const { id } = req.params;
+  const sql = 'DELETE FROM individuals WHERE id = ?';
+  db.query(sql, [id], (err, result) => {
+    if (err) {
+      console.error('Error deleting individual:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Individual not found' });
+    }
+    res.status(200).json({ message: 'Individual deleted successfully' });
+  });
+});
+// Increment views
+app.post('/api/individuals/:id/increment-views', (req, res) => {
+  console.log(`Incrementing views for individual ID: ${req.params.id}, IP: ${req.ip}`);
+  const { id } = req.params;
+  const sql = 'UPDATE individuals SET views = views + 1 WHERE id = ?';
+  db.query(sql, [id], (err, result) => {
+    if (err) {
+      console.error('Error incrementing views:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Individual not found' });
+    }
+    res.status(200).json({ success: true, message: 'Views incremented successfully' });
+  });
+});
+
+// Increment likes
+app.post('/api/individuals/:id/increment-likes', (req, res) => {
+  const { id } = req.params;
+  const sql = 'UPDATE individuals SET likes = likes + 1 WHERE id = ?';
+  db.query(sql, [id], (err, result) => {
+    if (err) {
+      console.error('Error incrementing likes:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Individual not found' });
+    }
+    res.status(200).json({ success: true, message: 'Likes incremented successfully' });
+  });
+});
+// Add a new vote
+app.post('/api/votes', verifyUser, (req, res) => {
+  const { eventId, vote } = req.body;
+  const userId = req.user.id; // Assuming `verifyUser` middleware adds `req.user`
+
+  console.log('User ID:', userId); // Debug log to check the value of userId
+
+  if (!eventId || !vote) {
+    return res.status(400).json({ error: 'Event ID and vote are required' });
+  }
+
+  // Check if the user has already voted for this event
+  const checkSql = 'SELECT vote FROM votes WHERE user_id = ? AND event_id = ?';
+  db.query(checkSql, [userId, eventId], (err, results) => {
+    if (err) {
+      console.error('Error checking existing vote:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+
+    if (results.length > 0) {
+      const currentVote = results[0].vote;
+
+      if (currentVote === vote) {
+        // If the vote is the same, do not update
+        return res.status(200).json({ message: 'Vote remains unchanged' });
+      }
+
+      // Update the vote if it's different
+      const updateSql = 'UPDATE votes SET vote = ? WHERE user_id = ? AND event_id = ?';
+      db.query(updateSql, [vote, userId, eventId], (err, result) => {
+        if (err) {
+          console.error('Error updating vote:', err.message);
+          return res.status(500).json({ error: 'Server error' });
+        }
+        return res.status(200).json({ message: 'Vote updated successfully' });
+      });
+    } else {
+      // User has not voted yet, insert a new vote
+      const insertSql = 'INSERT INTO votes (user_id, event_id, vote) VALUES (?, ?, ?)';
+      db.query(insertSql, [userId, eventId, vote], (err, result) => {
+        if (err) {
+          console.error('Error adding vote:', err.message);
+          return res.status(500).json({ error: 'Server error' });
+        }
+        return res.status(201).json({ message: 'Vote added successfully' });
+      });
+    }
+  });
+});
+// Get vote counts for an event
+app.get('/api/votes/:eventId', (req, res) => {
+  const { eventId } = req.params;
+  const sql = `
+    SELECT 
+      SUM(CASE WHEN vote = 'yes' THEN 1 ELSE 0 END) AS yesVotes,
+      SUM(CASE WHEN vote = 'no' THEN 1 ELSE 0 END) AS noVotes
+    FROM votes
+    WHERE event_id = ?
+  `;
+  db.query(sql, [eventId], (err, results) => {
+    if (err) {
+      console.error('Error fetching votes:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    res.status(200).json(results[0]);
+  });
+});
+app.post('/api/newsvotes', verifyUser, (req, res) => {
+  const { newsId, vote } = req.body;
+  const userId = req.user.id; // Assuming `verifyUser` middleware adds `req.user`
+
+  console.log('User ID:', userId); // Debug log to check the value of userId
+
+  if (!newsId || !vote) {
+    return res.status(400).json({ error: 'News ID and vote are required' });
+  }
+
+  // Check if the user has already voted for this event
+  const checkSql = 'SELECT vote FROM newsvotes WHERE user_id = ? AND news_id = ?';
+  db.query(checkSql, [userId, newsId], (err, results) => {
+    if (err) {
+      console.error('Error checking existing vote:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+
+    if (results.length > 0) {
+      const currentVote = results[0].vote;
+
+      if (currentVote === vote) {
+        // If the vote is the same, do not update
+        return res.status(200).json({ message: 'Vote remains unchanged' });
+      }
+
+      // Update the vote if it's different
+      const updateSql = 'UPDATE newsvotes SET vote = ? WHERE user_id = ? AND news_id = ?';
+      db.query(updateSql, [vote, userId, newsId], (err, result) => {
+        if (err) {
+          console.error('Error updating vote:', err.message);
+          return res.status(500).json({ error: 'Server error' });
+        }
+        return res.status(200).json({ message: 'Vote updated successfully' });
+      });
+    } else {
+      // User has not voted yet, insert a new vote
+      const insertSql = 'INSERT INTO newsvotes (user_id, news_id, vote) VALUES (?, ?, ?)';
+      db.query(insertSql, [userId, newsId, vote], (err, result) => {
+        if (err) {
+          console.error('Error adding vote:', err.message);
+          return res.status(500).json({ error: 'Server error' });
+        }
+        return res.status(201).json({ message: 'Vote added successfully' });
+      });
+    }
+  });
+});
+// Get vote counts for an event
+app.get('/api/newsvotes/:newsId', (req, res) => {
+  const { newsId } = req.params;
+  const sql = `
+    SELECT 
+      SUM(CASE WHEN vote = 'yes' THEN 1 ELSE 0 END) AS yesVotes,
+      SUM(CASE WHEN vote = 'no' THEN 1 ELSE 0 END) AS noVotes
+    FROM newsvotes
+    WHERE news_id = ?
+  `;
+  db.query(sql, [newsId], (err, results) => {
+    if (err) {
+      console.error('Error fetching votes:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    res.status(200).json(results[0]);
+  });
+});
+
+app.post('/api/orgvotes', verifyUser, (req, res) => {
+  const { orgId, vote } = req.body;
+  const userId = req.user.id; // Assuming `verifyUser` middleware adds `req.user`
+
+  console.log('User ID:', userId); // Debug log to check the value of userId
+
+  if (!orgId || !vote) {
+    return res.status(400).json({ error: 'Organisation ID and vote are required' });
+  }
+
+  // Check if the user has already voted for this event
+  const checkSql = 'SELECT vote FROM orgvotes WHERE user_id = ? AND org_id = ?';
+  db.query(checkSql, [userId, orgId], (err, results) => {
+    if (err) {
+      console.error('Error checking existing vote:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+
+    if (results.length > 0) {
+      const currentVote = results[0].vote;
+
+      if (currentVote === vote) {
+        // If the vote is the same, do not update
+        return res.status(200).json({ message: 'Vote remains unchanged' });
+      }
+
+      // Update the vote if it's different
+      const updateSql = 'UPDATE orgvotes SET vote = ? WHERE user_id = ? AND org_id = ?';
+      db.query(updateSql, [vote, userId, orgId], (err, result) => {
+        if (err) {
+          console.error('Error updating vote:', err.message);
+          return res.status(500).json({ error: 'Server error' });
+        }
+        return res.status(200).json({ message: 'Vote updated successfully' });
+      });
+    } else {
+      // User has not voted yet, insert a new vote
+      const insertSql = 'INSERT INTO orgvotes (user_id, org_id, vote) VALUES (?, ?, ?)';
+      db.query(insertSql, [userId, orgId, vote], (err, result) => {
+        if (err) {
+          console.error('Error adding vote:', err.message);
+          return res.status(500).json({ error: 'Server error' });
+        }
+        return res.status(201).json({ message: 'Vote added successfully' });
+      });
+    }
+  });
+});
+// Get vote counts for an event
+app.get('/api/orgvotes/:orgId', (req, res) => {
+  const { orgId } = req.params;
+  const sql = `
+    SELECT 
+      SUM(CASE WHEN vote = 'yes' THEN 1 ELSE 0 END) AS yesVotes,
+      SUM(CASE WHEN vote = 'no' THEN 1 ELSE 0 END) AS noVotes
+    FROM orgvotes
+    WHERE org_id = ?
+  `;
+  db.query(sql, [orgId], (err, results) => {
+    if (err) {
+      console.error('Error fetching votes:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    res.status(200).json(results[0]);
+  });
+});
+
+// Endpoint to handle voting for alumni
+app.post('/api/alumni/:id/vote', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Increment the vote count for the specified alumni in the MySQL table
+    const sql = 'UPDATE alumni SET votes = COALESCE(votes, 0) + 1 WHERE id = ?';
+    const result = await query(sql, [id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Alumni not found' });
+    }
+
+    res.status(200).json({ message: 'Vote recorded successfully' });
+  } catch (error) {
+    console.error('Error recording vote:', error.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Endpoint to fetch top 3 individuals with the highest votes
+app.get('/api/top-voted', async (req, res) => {
+  try {
+    const sql = `
+      SELECT id, fullname, profile_pic, degree, votes
+      FROM alumni
+      ORDER BY votes DESC
+      LIMIT 3
+    `;
+    db.query(sql, (err, results) => {
+      if (err) {
+        console.error('Error fetching top-voted alumni:', err.message);
+        return res.status(500).json({ error: 'Server error' });
+      }
+      res.status(200).json(results);
+    });
+  } catch (error) {
+    console.error('Error fetching top-voted alumni:', error.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+app.get('/api/votes-by-major-year', async (req, res) => {
+  const sql = `
+    SELECT 
+      SUBSTRING(student_id, 1, 2) AS year, 
+      SUBSTRING(student_id, 3, 2) AS major, 
+      SUM(votes) AS total_votes
+    FROM alumni
+    WHERE votes IS NOT NULL
+    GROUP BY year, major
+    ORDER BY year, major;
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error('Error fetching votes data:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    res.status(200).json(results);
+  });
+});
+app.get('/api/votes-year', (req, res) => {
+  const sql = `
+    SELECT 
+      SUBSTRING(student_id, 7, 2) AS year, -- Extract the year from the 7th and 8th characters of student_id
+      SUM(votes) AS total_votes
+    FROM alumni
+    WHERE votes IS NOT NULL
+    GROUP BY year
+    ORDER BY year;
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error('Error fetching votes data by year:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    res.status(200).json(results);
+  });
+});
+app.post('/api/contact', (req, res) => {
+  const { name, email, message } = req.body;
+
+  if (!name || !email || !message) {
+    return res.status(400).json({ error: 'All fields are required' });
+  }
+
+  const sql = 'INSERT INTO contact_messages (name, email, message) VALUES (?, ?, ?)';
+  db.query(sql, [name, email, message], (err, result) => {
+    if (err) {
+      console.error('Error saving contact message:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    res.status(201).json({ message: 'Message saved successfully' });
+  });
+});app.get('/api/contact', (req, res) => {
+  const sql = 'SELECT * FROM contact_messages ORDER BY created_at DESC';
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error('Error fetching contact messages:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    res.status(200).json(results);
+  });
+});
+
+
+app.get('/api/contact/range', (req, res) => {
+  const { startDate, endDate } = req.query;
+  const sql = `
+    SELECT * 
+    FROM contact_messages 
+    WHERE DATE(created_at) BETWEEN ? AND ?
+    ORDER BY created_at ASC
+  `;
+  db.query(sql, [startDate, endDate], (err, results) => {
+    if (err) {
+      console.error('Error fetching range messages:', err.message);
+      return res.status(500).json({ error: 'Server error' });
+    }
+    res.status(200).json(results);
+  });
+});
+// Endpoint to handle voting
 
 // Bắt đầu server
 server.listen(port, () => {

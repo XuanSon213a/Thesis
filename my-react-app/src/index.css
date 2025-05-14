@@ -1,4 +1,52 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities; 
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
  
+.carousel-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  perspective: 1500px;
+}
+
+.carousel-track {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  animation: horizontalRotate 20s linear infinite;
+}
+
+.carousel-item {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  transition: transform 0.5s;
+}
+
+@keyframes horizontalRotate {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(-360deg);
+  }
+}
+
+@media (max-width: 768px) {
+  .carousel-container {
+    perspective: 800px;
+  }
+  .carousel-item {
+    transform: scale(0.7) translateZ(300px) !important;
+  }
+}
+
+@layer utilities {
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+}

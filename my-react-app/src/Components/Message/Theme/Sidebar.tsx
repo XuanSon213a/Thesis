@@ -201,7 +201,7 @@ const Sidebar: React.FC = () => {
 
         {/* Avatar và thông tin người dùng đã đăng nhập */}
         {/* Avatar and user details */}
-        <div className="flex items-center flex-col gap-4 mt-5">
+        <div className="flex items-center flex-col gap-4 mt-2 pl-2">
           <button
             className="mx-auto"
             title={user?.fullname}
@@ -213,10 +213,10 @@ const Sidebar: React.FC = () => {
                   userId={user?.mongoId} 
                   fullname={user?.fullname || 'User'}
                   imageUrl={user?.profile_pic || ''}
-                  width={40}
-                  height={40}
+                  width={30}
+                  height={30}
                 />
-                <p className="text-sm text-center text-gray-700 mt-1">{user?.fullname}</p>
+                <p className="text-sm text-center text-gray-700 mt-5">{user?.fullname}</p>
               </>
             )}
           </button>
